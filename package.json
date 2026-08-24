@@ -20,10 +20,11 @@
     "db:ingest:unit-1": "tsx prisma/ingest-unit-1-source.ts",
     "ocr:setup": "bash scripts/setup-local-ocr.sh",
     "ocr:unit-1": "bash scripts/ocr-textbook-unit.sh",
-    "eval:synthetic-class": "tsx evals/run-synthetic-class.ts"
-    ,"eval:full-unit": "tsx evals/run-full-unit-simulation.ts"
+    "eval:synthetic-class": "tsx evals/run-synthetic-class.ts",
+    "eval:full-unit": "tsx evals/run-full-unit-simulation.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1116.0",
     "@prisma/adapter-pg": "7.9.1",
     "@prisma/client": "7.9.1",
     "bcryptjs": "3.0.3",

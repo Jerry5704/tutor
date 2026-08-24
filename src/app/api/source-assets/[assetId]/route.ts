@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { requireStudent } from "@/server/auth/session";
-
-const assetRoot = path.join(process.cwd(), "materials", "derived", "biologia-na-czasie-4", "unit-1", "assets");
+import { SourceAssetStorage } from "@/server/storage/source-asset-storage";
+import { logError } from "@/server/observability/logger";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ assetId: string }> }) {
   await requireStudent();
@@ -26,9 +24,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
   }
   if (asset?.sourceType !== "TEXTBOOK") return new Response("Not found", { status: 404 });
   const fileName = asset?.localFileName;
-  if (!fileName || fileName !== path.basename(fileName)) return new Response("Not found", { status: 404 });
-  const content = await readFile(path.join(assetRoot, fileName));
-  return new Response(new Uint8Array(content), {
+  if (!fileName) return new Response("Not found", { status: 404 });
+  const content = await new SourceAssetStorage().read(fileName).catch((error: unknown) => {
+    logError("source_asset_read_failed", error, { assetId: asset.id });
+    return undefined;
+  });
+  if (!content) return new Response("Image unavailable", { status: 503 });
+  return new Response(content, {
     headers: {
       "Content-Type": asset.mediaType,
       "Cache-Control": "private, max-age=3600",

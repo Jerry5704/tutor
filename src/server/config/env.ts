@@ -1,6 +1,6 @@
 import "server-only";
 
-function required(name: "DATABASE_URL" | "AUTH_SECRET" | "OPENAI_API_KEY") {
+function required(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
@@ -29,4 +29,16 @@ export function internetVisualsEnabled() {
 
 export function isProduction() {
   return process.env.NODE_ENV === "production";
+}
+
+export function sourceAssetStorageConfig() {
+  const mode = process.env.SOURCE_ASSET_STORAGE?.trim().toLowerCase() || "local";
+  if (mode === "local") return { mode: "local" as const };
+  if (mode !== "s3") throw new Error("SOURCE_ASSET_STORAGE must be local or s3");
+  return {
+    mode: "s3" as const,
+    bucket: required("SOURCE_ASSET_S3_BUCKET"),
+    prefix: (process.env.SOURCE_ASSET_S3_PREFIX?.trim() || "textbook/unit-1/assets").replace(/^\/+|\/+$/gu, ""),
+    region: process.env.AWS_REGION?.trim() || "eu-central-1",
+  };
 }

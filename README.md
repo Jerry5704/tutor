@@ -204,6 +204,21 @@ Konkretny zasób jest przypisany do `TutorMessage`, dzięki czemu historia rozmo
 nie zmienia ilustracji po czasie. Zewnętrzny obraz jest udostępniany przez
 kontrolowany endpoint aplikacji, który nie proxy'uje dowolnych domen.
 
+Lokalnie ilustracje podręcznika są odczytywane z katalogu `materials/derived`.
+W kontenerze produkcyjnym ustaw `SOURCE_ASSET_STORAGE=s3`,
+`SOURCE_ASSET_S3_BUCKET`, opcjonalny `SOURCE_ASSET_S3_PREFIX` oraz `AWS_REGION`.
+Aplikacja korzysta ze standardowego łańcucha poświadczeń AWS SDK, więc na ECS
+lub App Runner należy nadać roli zadania wyłącznie `s3:GetObject` dla tego
+prefiksu; kluczy AWS nie zapisuje się w `.env`.
+
+Po utworzeniu prywatnego bucketu lokalne ilustracje można wysłać standardowym
+AWS CLI, bez publikowania ich w Git:
+
+```bash
+aws s3 sync materials/derived/biologia-na-czasie-4/unit-1/assets \
+  s3://NAZWA-BUCKETU/textbook/unit-1/assets
+```
+
 ## Zakres pierwszego vertical slice
 
 Logowanie ucznia, dashboard jednego kursu, wybór działu, notatka nauczyciela,
