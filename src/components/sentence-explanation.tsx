@@ -48,6 +48,7 @@ export function SentenceExplanation({ children, sentence, source }: {
   const top = rect ? Math.max(16, rect.top - 8) : 0;
 
   return <>
+    {/* biome-ignore lint/a11y/useSemanticElements: A button cannot legally contain the nested concept links rendered inside this sentence. */}
     <span
       ref={targetRef}
       className="sentence-explanation-target"

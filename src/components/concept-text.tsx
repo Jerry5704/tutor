@@ -14,6 +14,7 @@ function sentenceGroups(segments: AnnotatedSegment[]) {
   });
   const sentences = [...new Intl.Segmenter("pl", { granularity: "sentence" }).segment(text)];
   return sentences.map(({ index, segment }) => ({
+    start: index,
     text: segment,
     pieces: positioned
       .filter((item) => item.start < index + segment.length && item.end > index)
@@ -36,10 +37,10 @@ export function ConceptText({ sessionId, explanationSource, segments }: {
   segments: AnnotatedSegment[];
 }) {
   const groups = sentenceGroups(segments);
-  return <span className="message-text">{groups.map((group, sentenceIndex) => {
-    const content = group.pieces.map((segment, pieceIndex) => piece(sessionId, segment, `${sentenceIndex}-${pieceIndex}`));
+  return <span className="message-text">{groups.map((group) => {
+    const content = group.pieces.map((segment, pieceIndex) => piece(sessionId, segment, `${group.start}-${pieceIndex}`));
     return explanationSource
-      ? <SentenceExplanation key={sentenceIndex} sentence={group.text} source={explanationSource}>{content}</SentenceExplanation>
-      : <span key={sentenceIndex}>{content}</span>;
+      ? <SentenceExplanation key={group.start} sentence={group.text} source={explanationSource}>{content}</SentenceExplanation>
+      : <span key={group.start}>{content}</span>;
   })}</span>;
 }

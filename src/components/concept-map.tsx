@@ -26,9 +26,9 @@ export function ConceptMap({ sessionId, concepts }: { sessionId: string; concept
       <span><strong>Mapa pojęć działu</strong><small>Kliknij pojęcie, aby je wyjaśnić lub przećwiczyć</small></span>
       <span className="concept-map-count">{ordered.length}</span>
     </summary>
-    <div className="concept-map-legend" aria-label="Legenda stanu pojęć">
-      {(Object.keys(labels) as ConceptTone[]).map((tone) => <span key={tone}><i className={`concept-dot concept-${tone}`} />{labels[tone]}</span>)}
-    </div>
+    <ul className="concept-map-legend" aria-label="Legenda stanu pojęć">
+      {(Object.keys(labels) as ConceptTone[]).map((tone) => <li key={tone}><i className={`concept-dot concept-${tone}`} />{labels[tone]}</li>)}
+    </ul>
     <nav className="concept-map-items" aria-label="Pojęcia w tym dziale">
       {ordered.map((concept) => {
         const tone = conceptTone(concept);

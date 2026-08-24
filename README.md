@@ -181,6 +181,10 @@ docker run --rm -p 3000:3000 --env-file .env tutor-biologii
 Na środowisku publicznym migracje uruchamia się jako osobny krok wdrożenia,
 przed podmianą działającej wersji aplikacji.
 
+Workflow GitHub Actions dla `main` i pull requestów sprawdza lockfile, generuje
+klienta Prisma oraz uruchamia lint, typecheck i produkcyjny build. Nie korzysta
+z prawdziwych sekretów, bazy ani OpenAI API.
+
 Zmienne znajdują się w `.env.example`: `DATABASE_URL`, `AUTH_SECRET`,
 `OPENAI_API_KEY`, `OPENAI_MODEL`, `INTERNET_VISUALS_ENABLED`. Ustawienie
 `INTERNET_VISUALS_ENABLED=false` wyłącza wyszukiwanie ilustracji w Wikimedia
