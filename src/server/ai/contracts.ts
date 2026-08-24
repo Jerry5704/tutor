@@ -20,6 +20,7 @@ export interface TutorContext {
   objectiveCode: string;
   objectiveDescription: string;
   objectiveGuidance: string;
+  domainGuardrails: string[];
   scaffoldLevel: number;
   mastery: number;
   desiredChallenge: "RECALL" | "MECHANISM" | "TRANSFER";

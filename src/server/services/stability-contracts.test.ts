@@ -37,6 +37,7 @@ const context = (teacherScopeNote?: string): TutorContext => ({
   objectiveCode: "mol_nucleotide_structure",
   objectiveDescription: "Uczeń wyjaśnia budowę nukleotydu.",
   objectiveGuidance: "Kontrolowana wskazówka.",
+  domainGuardrails: [],
   scaffoldLevel: 0,
   mastery: 0,
   desiredChallenge: "RECALL",

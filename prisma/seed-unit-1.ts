@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { biologyTutorGuardrails } from "./curriculum-guardrails";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -223,6 +224,10 @@ async function main() {
     include: { units: true },
   });
   if (!course) throw new Error("Biology grade 4 advanced course is missing. Run npm run db:seed first.");
+  await db.curriculumVersion.update({
+    where: { id: course.curriculumVersionId },
+    data: { tutorGuardrails: biologyTutorGuardrails },
+  });
 
   const evolution = course.units.find((unit) => unit.slug === "ewolucja");
   if (evolution?.order === 1) {

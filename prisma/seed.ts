@@ -2,6 +2,7 @@ import "dotenv/config";
 import { hash } from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { biologyTutorGuardrails } from "./curriculum-guardrails";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -9,7 +10,11 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
 async function main() {
   const school = await db.school.create({ data: { name: "Liceum Ogólnokształcące w Głubczycach", city: "Głubczyce" } });
-  const curriculum = await db.curriculumVersion.create({ data: { code: "PL-BIO-LO-2024", title: "Biologia LO — wersja MVP" } });
+  const curriculum = await db.curriculumVersion.create({ data: {
+    code: "PL-BIO-LO-2024",
+    title: "Biologia LO — wersja MVP",
+    tutorGuardrails: biologyTutorGuardrails,
+  } });
   const subject = await db.subject.create({ data: { code: "BIO", name: "Biologia" } });
   const course = await db.course.create({ data: {
     schoolId: school.id, curriculumVersionId: curriculum.id, subjectId: subject.id,

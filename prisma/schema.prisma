@@ -124,6 +124,7 @@ model CurriculumVersion {
   title       String
   validFrom   DateTime?
   validTo     DateTime?
+  tutorGuardrails Json @default("[]")
   createdAt   DateTime @default(now())
   courses     Course[]
   sourceLinks KnowledgeSourceCurriculum[]

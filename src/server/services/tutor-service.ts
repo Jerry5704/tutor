@@ -43,6 +43,10 @@ type Objective = {
   importance: number;
 };
 
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
 function diagnosticQuestion(objective: Objective) {
   return `Przejdźmy do kolejnego zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — wtedy krótko to wyjaśnię.`;
 }
@@ -331,6 +335,7 @@ export class TutorService {
       objectiveCode: objective.code,
       objectiveDescription: objective.description,
       objectiveGuidance: [objective.microExplanation, objective.practicePrompt, objective.transferPrompt].join("\n"),
+      domainGuardrails: stringArray(unit.course.curriculumVersion.tutorGuardrails),
       scaffoldLevel: session.scaffoldLevel,
       mastery: currentMastery,
       desiredChallenge: challengeFor(currentMastery),

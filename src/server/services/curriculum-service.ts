@@ -11,7 +11,10 @@ export class CurriculumService {
   getUnitForStudent(unitId: string, studentId: string) {
     return db.unit.findFirstOrThrow({
       where: { id: unitId, course: { enrollments: { some: { studentId } } } },
-      include: { topics: { orderBy: { order: "asc" }, include: { objectives: { where: { active: true }, orderBy: { order: "asc" } } } } },
+      include: {
+        course: { include: { curriculumVersion: true } },
+        topics: { orderBy: { order: "asc" }, include: { objectives: { where: { active: true }, orderBy: { order: "asc" } } } },
+      },
     });
   }
 }
