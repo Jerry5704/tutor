@@ -145,6 +145,8 @@ wyjaśnienia mechanizmu i transferu do nowego kontekstu.
   usage i wynik walidacji, ale nie klucze ani pełne odpowiedzi ucznia.
 - Produkcyjny deployment docelowo: AWS App Runner lub ECS Fargate, RDS
   PostgreSQL, Secrets Manager, CloudWatch i S3 dla legalnych materiałów.
+- `/api/health` służy jako lekki liveness check procesu, a `/api/ready`
+  potwierdza dostępność PostgreSQL bez ujawniania szczegółów połączenia.
 
 ## Konfiguracja lokalna
 
