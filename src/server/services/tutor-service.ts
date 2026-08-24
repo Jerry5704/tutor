@@ -1,4 +1,4 @@
-import type { AIProvider, TutorTurn } from "@/server/ai/contracts";
+import type { AIProvider, AIResult, TutorTurn } from "@/server/ai/contracts";
 import { validateTutorAIResult } from "@/server/ai/output-validation";
 import { db } from "@/server/db/client";
 import { AssessmentService } from "@/server/services/assessment-service";
@@ -50,7 +50,7 @@ function stringArray(value: unknown) {
 }
 
 function diagnosticQuestion(objective: Objective) {
-  return `Przejdźmy do kolejnego zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — wtedy krótko to wyjaśnię.`;
+  return `Przejdźmy do kolejnego zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — zapiszę to jako zagadnienie do nauki.`;
 }
 
 function guidedLesson(objective: Objective) {
@@ -179,6 +179,98 @@ export class TutorService {
     ].filter(Boolean).join("\n\n");
   }
 
+  private async recordDiagnosticGap(params: {
+    studentId: string;
+    sessionId: string;
+    answerId: string;
+    content: string;
+    objective: Objective;
+    objectives: Objective[];
+  }) {
+    const { studentId, sessionId, answerId, content, objective, objectives } = params;
+    const remainingStates = await db.sessionObjectiveState.findMany({
+      where: { sessionId, status: "NOT_STARTED" },
+      select: { learningObjectiveId: true },
+    });
+    const remainingIds = new Set(remainingStates.map((item) => item.learningObjectiveId));
+    const nextObjective = objectives.find((item) => remainingIds.has(item.id));
+    const policyResult: AIResult = {
+      turn: {
+        feedback: "",
+        nextQuestion: null,
+        studentIntent: "UNCERTAIN",
+        assessment: "INCORRECT",
+        evidenceLevel: "NONE",
+        misconceptions: [],
+        learningObjectives: [objective.code],
+        nextAction: nextObjective ? "NEXT_OBJECTIVE" : "SHOW_PLAN",
+        rationale: "Uczeń jawnie zgłosił brak wiedzy podczas diagnostyki; odpowiedź zapisano bez uruchamiania AI.",
+        sourceLocators: [],
+      },
+      responseId: `policy:diagnostic-gap:${answerId}`,
+      model: "deterministic-policy",
+      latencyMs: 0,
+    };
+    await db.tutorMessage.create({ data: { sessionId, role: "STUDENT", content } });
+    const recorded = await this.assessments.record(studentId, answerId, [objective.id], policyResult, 0);
+    await db.sessionObjectiveState.update({
+      where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
+      data: { status: "LEARNING", diagnosticAttempts: { increment: 1 } },
+    });
+    const acknowledgement = `Zapisuję „${objective.title}” jako zagadnienie do nauki. Wrócimy do niego po zakończeniu diagnozy.`;
+
+    if (nextObjective) {
+      await db.$transaction([
+        db.sessionObjectiveState.update({
+          where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: nextObjective.id } },
+          data: { status: "DIAGNOSING" },
+        }),
+        db.studySession.update({
+          where: { id: sessionId },
+          data: { currentObjectiveId: nextObjective.id, awaitingUnderstandingCheck: false, scaffoldLevel: 0 },
+        }),
+        db.tutorMessage.create({
+          data: {
+            sessionId,
+            role: "TUTOR",
+            content: `${acknowledgement}\n\n${diagnosticQuestion(nextObjective)}`,
+            learningObjectiveId: nextObjective.id,
+            questionIntent: "DIAGNOSTIC",
+            questionFingerprint: questionFingerprint(nextObjective.id, nextObjective.diagnosticPrompt),
+          },
+        }),
+      ]);
+    } else {
+      const weakest = await this.weakestObjective(studentId, objectives);
+      if (!weakest) throw new Error("Unit has no learning objectives");
+      await db.$transaction([
+        db.sessionObjectiveState.update({
+          where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: weakest.id } },
+          data: { status: "LEARNING", learningStep: "EXPLAIN", consecutiveStruggles: 0, workedExamplesShown: { increment: 1 } },
+        }),
+        db.studySession.update({
+          where: { id: sessionId },
+          data: { phase: "LEARNING", currentObjectiveId: weakest.id, awaitingUnderstandingCheck: false, scaffoldLevel: 0 },
+        }),
+        db.tutorMessage.create({
+          data: {
+            sessionId,
+            role: "TUTOR",
+            content: `${acknowledgement}\n\n${await this.planSummary(studentId, objectives)}\n\n${guidedLesson(weakest)}`,
+            learningObjectiveId: weakest.id,
+            showVisual: true,
+          },
+        }),
+      ]);
+    }
+    logInfo("diagnostic_gap_recorded", {
+      studentId,
+      sessionId,
+      assessmentId: recorded.assessmentId,
+      objectiveCode: objective.code,
+    });
+  }
+
   async start(studentId: string, unitId: string, teacherNote?: string) {
     const existing = await db.studySession.findFirst({
       where: { studentId, unitId, endedAt: null },
@@ -202,7 +294,7 @@ export class TutorService {
       teacherScopeNote: teacherNote?.trim() ? { create: { content: teacherNote.trim() } } : undefined,
       messages: { create: {
         role: "TUTOR",
-        content: `Zanim zaczniemy naukę, sprawdźmy cały dział. Zaczynamy od zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — wtedy krótko to wyjaśnię.`,
+        content: `Zanim zaczniemy naukę, sprawdźmy cały dział. Zaczynamy od zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — zapiszę to jako zagadnienie do nauki.`,
         learningObjectiveId: objective.id,
         questionIntent: "DIAGNOSTIC",
         questionFingerprint: questionFingerprint(objective.id, objective.diagnosticPrompt),
@@ -313,7 +405,19 @@ export class TutorService {
 
     const currentMastery = await this.studentModel.mastery(studentId, objective.id);
     const clarificationRequest = asksForClarification(content) || session.awaitingUnderstandingCheck;
-    const forceExplanation = explicitlyRequestsHelp(content) || clarificationRequest;
+    const helpRequested = explicitlyRequestsHelp(content);
+    if (session.phase === "DIAGNOSTIC" && helpRequested && !clarificationRequest) {
+      await this.recordDiagnosticGap({
+        studentId,
+        sessionId,
+        answerId: answer.id,
+        content,
+        objective,
+        objectives,
+      });
+      return null;
+    }
+    const forceExplanation = helpRequested || clarificationRequest;
     const knowledge = await this.knowledge.retrieveForObjective(objective.id, content);
     const rawResult = await this.ai.assessAndRespond({
       phase: session.phase === "DIAGNOSTIC" ? "DIAGNOSTIC" : "LEARNING",
