@@ -623,6 +623,8 @@ model ConceptAssessment {
   id                 String @id @default(cuid())
   conceptMessageId   String @unique
   learningObjectiveId String?
+  questionIntent      QuestionIntent?
+  questionFingerprint String?
   rating             AssessmentRating
   masteryDelta       Float
   objectiveMasteryBefore Float?
@@ -638,7 +640,7 @@ model ConceptAssessment {
   message            ConceptMessage @relation(fields: [conceptMessageId], references: [id], onDelete: Cascade)
   learningObjective  LearningObjective? @relation(fields: [learningObjectiveId], references: [id], onDelete: SetNull)
 
-  @@index([learningObjectiveId])
+  @@index([learningObjectiveId, questionIntent])
 }
 
 model KnowledgeSourceCurriculum {

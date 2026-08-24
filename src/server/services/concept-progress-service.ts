@@ -1,22 +1,5 @@
 import { db } from "@/server/db/client";
-
-function normalized(value: string) {
-  return value.toLocaleLowerCase("pl-PL").normalize("NFKD").replace(/\p{Diacritic}/gu, "");
-}
-
-function mentions(text: string, aliases: string[]) {
-  const haystack = normalized(text);
-  return aliases.some((alias) => {
-    const term = normalized(alias).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    return new RegExp(`(?<![a-z0-9])${term}(?![a-z0-9])`, "u").test(haystack);
-  });
-}
-
-function targetMastery(evidenceLevel: "RECALL" | "MECHANISM" | "TRANSFER") {
-  if (evidenceLevel === "TRANSFER") return 0.72;
-  if (evidenceLevel === "MECHANISM") return 0.6;
-  return 0.35;
-}
+import { conceptMasteryTarget, explicitlySupportedConceptIds } from "@/server/services/concept-evidence-policy";
 
 export class ConceptProgressService {
   async recordObjectiveEvidence(params: {
@@ -32,10 +15,12 @@ export class ConceptProgressService {
       include: { concept: { include: { aliases: true } } },
     });
     const evidenceText = `${params.question}\n${params.answer}`;
-    const supported = links.filter(({ concept }) => mentions(
-      evidenceText,
-      [concept.name, ...concept.aliases.map(({ alias }) => alias)],
-    ));
+    const supportedIds = new Set(explicitlySupportedConceptIds(evidenceText, links.map(({ concept }) => ({
+      id: concept.id,
+      name: concept.name,
+      aliases: concept.aliases.map(({ alias }) => alias),
+    }))));
+    const supported = links.filter(({ conceptId }) => supportedIds.has(conceptId));
     if (!supported.length) return;
 
     await db.$transaction(async (tx) => {
@@ -44,7 +29,7 @@ export class ConceptProgressService {
           where: { studentId_conceptId: { studentId: params.studentId, conceptId } },
         });
         const previousMastery = current?.mastery ?? 0;
-        const inferredMastery = Math.max(previousMastery, targetMastery(params.evidenceLevel));
+        const inferredMastery = Math.max(previousMastery, conceptMasteryTarget(params.evidenceLevel));
         await tx.studentConceptState.upsert({
           where: { studentId_conceptId: { studentId: params.studentId, conceptId } },
           create: {

@@ -5,6 +5,8 @@ import { db } from "@/server/db/client";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
 import { confirmsUnderstanding, explicitlyRequestsHelp } from "@/server/services/progress-policy";
+import { aggregateConceptMastery } from "@/server/services/concept-evidence-policy";
+import { questionFingerprint } from "@/server/services/question-history";
 
 const conceptTurnSchema = z.object({
   assessment: z.enum(["INCORRECT", "PARTIALLY_CORRECT", "CORRECT", "TRANSFER_DEMONSTRATED"]),
@@ -139,6 +141,7 @@ export class ConceptTutorService {
       .slice(0, 3);
     const sourceText = sources.map((item) => `[${item.locator}]\n${item.content.slice(0, 2500)}`).join("\n\n");
     const help = explicitlyRequestsHelp(answer);
+    const latestTutorQuestion = session.messages.find((message) => message.role === "TUTOR")?.content ?? "";
     const response = await this.client.responses.parse({
       model: this.model,
       instructions: `Jesteś tutorem jednego pojęcia biologicznego dla ucznia liceum. Oceniasz wyłącznie pojęcie „${session.concept.name}”.
@@ -157,7 +160,7 @@ Jeśli uczeń pokazał tylko RECALL, nextQuestion ma sprawdzić mechanizm. Jeśl
 Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
       input: JSON.stringify({
         phase: session.phase,
-        recentConversation: session.messages.reverse().map((message) => ({ role: message.role, content: message.content })),
+        recentConversation: session.messages.toReversed().map((message) => ({ role: message.role, content: message.content })),
         studentAnswer: answer,
         helpRequested: help,
       }),
@@ -189,12 +192,12 @@ Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
       ]);
       const masteryByConcept = new Map(conceptStates.map((item) => [item.conceptId, item.mastery]));
       masteryByConcept.set(session.conceptId, nextMastery);
-      const totalWeight = links.reduce((sum, link) => sum + link.importance, 0);
-      const conceptAggregate = totalWeight > 0
-        ? links.reduce((sum, link) => sum + (masteryByConcept.get(link.conceptId) ?? 0) * link.importance, 0) / totalWeight
-        : 0;
       objectiveMasteryBefore = objectiveMastery?.mastery ?? 0;
-      objectiveMasteryAfter = Math.max(objectiveMasteryBefore, Math.round(conceptAggregate * 1000) / 1000);
+      objectiveMasteryAfter = aggregateConceptMastery({
+        links,
+        masteryByConcept,
+        currentObjectiveMastery: objectiveMasteryBefore,
+      });
       objectiveConfidenceAfter = Math.min(1, (objectiveMastery?.confidence ?? 0) + 0.05);
     }
     const helpContent = `${turn.directAnswer.trim() || turn.feedback}\n\nCzy ta konkretna odpowiedź jest jasna? Jeśli tak, napisz „dalej”. Jeśli nie, wskaż słowo lub fragment, który mam rozwinąć.`;
@@ -211,7 +214,11 @@ Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
       const studentMessage = await tx.conceptMessage.create({ data: { conceptSessionId, role: "STUDENT", content: answer, submissionId } });
       await tx.conceptAssessment.create({ data: {
         conceptMessageId: studentMessage.id,
-        learningObjectiveId: completed ? objectiveId : undefined,
+        learningObjectiveId: objectiveId,
+        questionIntent: objectiveId && latestTutorQuestion
+          ? session.phase === "CHECK" ? "TRANSFER" : session.phase === "PRACTICE" ? "PRACTICE" : "UNDERSTANDING_CHECK"
+          : undefined,
+        questionFingerprint: objectiveId && latestTutorQuestion ? questionFingerprint(objectiveId, latestTutorQuestion) : undefined,
         rating: help ? "INCORRECT" : turn.assessment,
         masteryDelta: delta,
         objectiveMasteryBefore,

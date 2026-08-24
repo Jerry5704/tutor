@@ -508,15 +508,26 @@ export class TutorService {
         },
       });
       if (understood && objectiveState.learningStep === "PRACTICE") {
-        const previousQuestions = await db.tutorMessage.findMany({
-          where: { sessionId, learningObjectiveId: objective.id, questionFingerprint: { not: null } },
-          select: { questionFingerprint: true },
-        });
+        const [mainQuestions, conceptQuestions] = await Promise.all([
+          db.tutorMessage.findMany({
+            where: { sessionId, learningObjectiveId: objective.id, questionFingerprint: { not: null } },
+            select: { questionFingerprint: true },
+          }),
+          db.conceptAssessment.findMany({
+            where: {
+              learningObjectiveId: objective.id,
+              questionFingerprint: { not: null },
+              message: { session: { parentStudySessionId: sessionId } },
+            },
+            select: { questionFingerprint: true },
+          }),
+        ]);
         const transfer = selectTransferQuestion({
           learningObjectiveId: objective.id,
           objectiveTitle: objective.title,
           configuredQuestion: objective.transferPrompt,
-          previousFingerprints: previousQuestions.flatMap((message) => message.questionFingerprint ? [message.questionFingerprint] : []),
+          previousFingerprints: [...mainQuestions, ...conceptQuestions]
+            .flatMap((message) => message.questionFingerprint ? [message.questionFingerprint] : []),
         });
         const transferQuestion = transfer.question;
         tutorMessage = `${result.turn.feedback}\n\nDobrze — teraz sprawdźmy transfer do nowej sytuacji.\n\n${transferQuestion}`;
