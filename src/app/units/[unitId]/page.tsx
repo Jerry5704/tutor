@@ -1,4 +1,16 @@
 import { requireStudent } from "@/server/auth/session";
 import { CurriculumService } from "@/server/services/curriculum-service";
+import { db } from "@/server/db/client";
 import { startUnit } from "./actions";
-export default async function UnitPage({ params }: { params: Promise<{ unitId: string }> }) { const { unitId } = await params; const student = await requireStudent(); const unit = await new CurriculumService().getUnitForStudent(unitId, student.id); return <main className="narrow"><p className="eyebrow">{unit.title}</p><h1>Zanim zaczniemy</h1><p className="muted">Diagnostyka jest zawsze pierwszym krokiem. Dzięki niej nie będziemy tracić czasu na to, co już umiesz.</p><form action={startUnit.bind(null, unit.id)} className="card stack"><label className="field"><strong>Czy nauczyciel podał dodatkowe informacje o zakresie?</strong><span className="muted">Opcjonalnie: wykluczone punkty, priorytety lub typ zadań.</span><textarea name="teacherNote" placeholder="Np. szczególnie ważny będzie mechanizm specjacji…" /></label><button type="submit" className="button">Rozpocznij diagnostykę</button></form></main>; }
+export default async function UnitPage({ params }: { params: Promise<{ unitId: string }> }) {
+  const { unitId } = await params;
+  const student = await requireStudent();
+  const unit = await new CurriculumService().getUnitForStudent(unitId, student.id);
+  const existing = await db.studySession.findFirst({
+    where: { studentId: student.id, unitId, endedAt: null },
+    include: { teacherScopeNote: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (existing) return <main className="narrow"><p className="eyebrow">{unit.title}</p><h1>Wróć do swojej nauki</h1><p className="muted">Tutor zachował bieżący cel, mastery i historię rozmowy.</p>{existing.teacherScopeNote && <section className="card"><strong>Zakres od nauczyciela</strong><p>{existing.teacherScopeNote.content}</p></section>}<form action={startUnit.bind(null, unit.id)}><button type="submit" className="button">Wznów naukę</button></form></main>;
+  return <main className="narrow"><p className="eyebrow">{unit.title}</p><h1>Zanim zaczniemy</h1><p className="muted">Diagnostyka jest zawsze pierwszym krokiem. Dzięki niej nie będziemy tracić czasu na to, co już umiesz.</p><form action={startUnit.bind(null, unit.id)} className="card stack"><label className="field"><strong>Czy nauczyciel podał dodatkowe informacje o zakresie?</strong><span className="muted">Opcjonalnie: wykluczone punkty, priorytety lub typ zadań.</span><textarea name="teacherNote" placeholder="Np. szczególnie ważny będzie mechanizm specjacji…" /></label><button type="submit" className="button">Rozpocznij diagnostykę</button></form></main>;
+}

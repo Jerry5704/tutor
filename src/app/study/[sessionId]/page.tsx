@@ -4,11 +4,12 @@ import { AnswerForm } from "@/components/answer-form";
 import { ConceptDiagram } from "@/components/concept-diagram";
 import { ConceptMap } from "@/components/concept-map";
 import { ConceptText } from "@/components/concept-text";
+import { ResetProgressForm } from "@/components/reset-progress-form";
 import { requireStudent } from "@/server/auth/session";
 import { db } from "@/server/db/client";
 import { annotateConceptText } from "@/server/services/concept-annotation";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
-import { beginPractice, restartSession, skipDiagnostic, submitAnswer } from "./actions";
+import { beginPractice, pauseStudySession, resetUnitProgress, skipDiagnostic, submitAnswer } from "./actions";
 
 export default async function Study({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = await params;
@@ -68,12 +69,13 @@ export default async function Study({ params }: { params: Promise<{ sessionId: s
     <section className={`chat ${focusQuestion ? "concept-current" : ""}`} aria-live="polite">
       {(focusQuestion ? latestMessage ? [latestMessage] : [] : earlierMessages).map(renderMessage)}
     </section>
-    {!session.endedAt && <>
+    {!session.endedAt && !session.pausedAt && <>
       {awaitingPractice
         ? <form action={beginPractice.bind(null, session.id)}><button type="submit" className="button">Rozumiem — sprawdź mnie bez podpowiedzi</button></form>
         : <AnswerForm action={submitAnswer.bind(null, session.id)} />}
       {session.phase === "DIAGNOSTIC" && <form action={skipDiagnostic.bind(null, session.id)}><button type="submit" className="button secondary">Nie znam jeszcze tego działu — pomiń resztę diagnostyki</button></form>}
-      <form action={restartSession.bind(null, session.id)}><button type="submit" className="button secondary">Rozpocznij poprawioną diagnostykę od nowa</button></form>
+      <form action={pauseStudySession.bind(null, session.id)}><button type="submit" className="button secondary">Zakończ na dziś i zachowaj postęp</button></form>
+      <details className="card"><summary>Opcje resetowania</summary><p className="muted">Reset usuwa bieżące mastery tego działu, ale zachowuje historię do audytu.</p><ResetProgressForm action={resetUnitProgress.bind(null, session.id)} /></details>
     </>}
   </main>;
 }

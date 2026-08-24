@@ -53,7 +53,7 @@ export class ConceptDiscoveryService {
     const term = requestedTerm(message);
     if (!term) return undefined;
     const session = await db.studySession.findFirst({
-      where: { id: studySessionId, studentId, endedAt: null },
+      where: { id: studySessionId, studentId, endedAt: null, pausedAt: null },
       include: { unit: { include: { course: true } } },
     });
     if (!session) return undefined;

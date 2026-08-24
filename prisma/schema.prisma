@@ -280,6 +280,7 @@ model StudySession {
   promptVersion      String @default("tutor-v1")
   startedAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+  pausedAt           DateTime?
   endedAt            DateTime?
   student            StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
   unit               Unit @relation(fields: [unitId], references: [id])

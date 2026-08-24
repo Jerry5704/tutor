@@ -37,7 +37,22 @@ export async function skipDiagnostic(sessionId: string) {
   revalidatePath(`/study/${sessionId}`);
 }
 
-export async function restartSession(sessionId: string) {
+export async function pauseStudySession(sessionId: string) {
+  const student = await requireStudent();
+  await db.$transaction([
+    db.studySession.update({
+      where: { id: sessionId, studentId: student.id, endedAt: null, pausedAt: null },
+      data: { pausedAt: new Date() },
+    }),
+    db.conceptSession.updateMany({
+      where: { parentStudySessionId: sessionId, studentId: student.id, status: "ACTIVE" },
+      data: { status: "PAUSED" },
+    }),
+  ]);
+  redirect("/dashboard");
+}
+
+export async function resetUnitProgress(sessionId: string) {
   const student = await requireStudent();
   const previous = await db.studySession.findFirstOrThrow({
     where: { id: sessionId, studentId: student.id },
@@ -45,14 +60,29 @@ export async function restartSession(sessionId: string) {
   });
   const unit = await db.unit.findUniqueOrThrow({
     where: { id: previous.unitId },
-    include: { topics: { include: { objectives: { select: { id: true } } } } },
+    include: { topics: { include: { objectives: { where: { active: true }, select: { id: true } } } } },
   });
   const objectiveIds = unit.topics.flatMap((topic) => topic.objectives.map((objective) => objective.id));
+  const conceptLinks = await db.conceptObjective.findMany({
+    where: { learningObjectiveId: { in: objectiveIds } },
+    select: { conceptId: true },
+  });
+  const conceptIds = [...new Set(conceptLinks.map((link) => link.conceptId))];
   await db.$transaction([
-    db.studySession.update({ where: { id: previous.id }, data: { phase: "COMPLETED", endedAt: new Date() } }),
+    db.studySession.update({ where: { id: previous.id }, data: { phase: "COMPLETED", pausedAt: null, endedAt: new Date() } }),
     db.studentMastery.updateMany({
       where: { studentId: student.id, learningObjectiveId: { in: objectiveIds } },
       data: { mastery: 0, confidence: 0, attempts: 0, lastPracticedAt: null },
+    }),
+    db.reviewSchedule.deleteMany({
+      where: { studentId: student.id, learningObjectiveId: { in: objectiveIds } },
+    }),
+    db.studentConceptState.deleteMany({
+      where: { studentId: student.id, conceptId: { in: conceptIds } },
+    }),
+    db.conceptSession.updateMany({
+      where: { parentStudySessionId: previous.id, studentId: student.id, status: { in: ["ACTIVE", "PAUSED"] } },
+      data: { status: "RESET", endedAt: new Date() },
     }),
   ]);
   const session = await new TutorService(new OpenAIProvider()).start(

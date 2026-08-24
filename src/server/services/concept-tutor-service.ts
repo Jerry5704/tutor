@@ -36,7 +36,7 @@ export class ConceptTutorService {
 
   async start(studentId: string, parentStudySessionId: string, conceptSlug: string, selfFamiliarity: "NOT_FAMILIAR" | "SOMEWHAT_FAMILIAR" | "FAMILIAR", entryQuestion?: string, parentConceptSessionId?: string) {
     const parent = await db.studySession.findFirstOrThrow({
-      where: { id: parentStudySessionId, studentId, endedAt: null },
+      where: { id: parentStudySessionId, studentId, endedAt: null, pausedAt: null },
       include: { unit: { include: { course: true } }, messages: { orderBy: { createdAt: "desc" }, take: 1 } },
     });
     const concept = await db.concept.findFirstOrThrow({

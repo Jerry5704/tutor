@@ -11,7 +11,7 @@ export class ConceptIntentService {
   async resolve(studentId: string, studySessionId: string, message: string) {
     if (!EXPLANATION_INTENT.test(message)) return undefined;
     const session = await db.studySession.findFirst({
-      where: { id: studySessionId, studentId, endedAt: null },
+      where: { id: studySessionId, studentId, endedAt: null, pausedAt: null },
       include: { unit: { include: { course: true } } },
     });
     if (!session) return undefined;

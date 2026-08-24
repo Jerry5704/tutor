@@ -99,7 +99,7 @@ export class TutorService {
 
   async skipRemainingDiagnostic(studentId: string, sessionId: string, studentMessage?: string) {
     const session = await db.studySession.findFirstOrThrow({
-      where: { id: sessionId, studentId, endedAt: null },
+      where: { id: sessionId, studentId, endedAt: null, pausedAt: null },
     });
     if (session.phase !== "DIAGNOSTIC") return;
     const unit = await this.curriculum.getUnitForStudent(session.unitId, studentId);
@@ -138,7 +138,7 @@ export class TutorService {
 
   async beginPractice(studentId: string, sessionId: string) {
     const session = await db.studySession.findFirstOrThrow({
-      where: { id: sessionId, studentId, endedAt: null },
+      where: { id: sessionId, studentId, endedAt: null, pausedAt: null },
     });
     if (!session.currentObjectiveId) throw new Error("Session has no current objective");
     const state = await db.sessionObjectiveState.findUniqueOrThrow({
@@ -204,7 +204,10 @@ export class TutorService {
       where: { studentId, unitId, endedAt: null },
       orderBy: { updatedAt: "desc" },
     });
-    if (existing) return existing;
+    if (existing) {
+      if (!existing.pausedAt) return existing;
+      return db.studySession.update({ where: { id: existing.id }, data: { pausedAt: null } });
+    }
 
     const unit = await this.curriculum.getUnitForStudent(unitId, studentId);
     const objectives = this.objectives(unit);
@@ -230,7 +233,7 @@ export class TutorService {
 
   async answer(studentId: string, sessionId: string, content: string, submissionId?: string) {
     const session = await db.studySession.findFirstOrThrow({
-      where: { id: sessionId, studentId, endedAt: null },
+      where: { id: sessionId, studentId, endedAt: null, pausedAt: null },
       include: { teacherScopeNote: true, messages: { orderBy: { createdAt: "desc" }, take: 8 } },
     });
     if (!session.currentObjectiveId) throw new Error("Session has no current objective");
