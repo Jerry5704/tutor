@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "biome lint src prisma/*.ts *.ts",
+    "lint": "biome lint src prisma/*.ts evals/*.ts *.ts",
     "test": "tsx --test src/server/services/*.test.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
@@ -20,8 +20,9 @@
     "db:ingest:unit-1": "tsx prisma/ingest-unit-1-source.ts",
     "ocr:setup": "bash scripts/setup-local-ocr.sh",
     "ocr:unit-1": "bash scripts/ocr-textbook-unit.sh",
-    "eval:synthetic-class": "tsx evals/run-synthetic-class.ts",
-    "eval:full-unit": "tsx evals/run-full-unit-simulation.ts"
+    "eval:pilot": "NODE_OPTIONS=--conditions=react-server tsx evals/run-evaluation-lab.ts --personas=novice,advanced --repetitions=1 --label=pilot",
+    "eval:synthetic-class": "NODE_OPTIONS=--conditions=react-server tsx evals/run-evaluation-lab.ts --repetitions=1 --label=synthetic-class",
+    "eval:full-unit": "NODE_OPTIONS=--conditions=react-server tsx evals/run-evaluation-lab.ts --personas=average --repetitions=1 --label=full-unit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1116.0",
@@ -34,6 +35,7 @@
     "pg": "8.16.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
     "zod": "4.4.3"
   },
   "devDependencies": {

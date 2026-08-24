@@ -2,5 +2,5 @@
   "$schema": "https://biomejs.dev/schemas/2.5.9/schema.json",
   "formatter": { "enabled": false },
   "linter": { "enabled": true, "rules": { "recommended": true } },
-  "files": { "includes": ["src/**/*.ts", "src/**/*.tsx", "prisma/*.ts", "*.ts"] }
+  "files": { "includes": ["src/**/*.ts", "src/**/*.tsx", "prisma/*.ts", "evals/*.ts", "*.ts"] }
 }

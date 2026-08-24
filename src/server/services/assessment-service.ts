@@ -37,6 +37,8 @@ export class AssessmentService {
       const assessment = await tx.assessment.create({ data: {
         studentAnswerId: answerId,
         rating: result.turn.assessment,
+        studentIntent: result.turn.studentIntent,
+        evidenceLevel: result.turn.evidenceLevel,
         masteryDelta: appliedDelta,
         proposedMasteryDelta: delta,
         nextAction: result.turn.nextAction, rationale: result.turn.rationale,

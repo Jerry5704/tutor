@@ -231,12 +231,38 @@ administratora i próbny sprawdzian pozostają poza pierwszym commitem.
 
 ## Wirtualna klasa do ewaluacji
 
-Komenda `npm run eval:synthetic-class` prowadzi czterech oznaczonych jako
-syntetyczni uczniów przez pierwszy aktywny dział i zapisuje raport JSON oraz HTML
-w lokalnym katalogu `eval-results/`. Symulacje korzystają z prawdziwego
-`TutorService`, dlatego wykrywają problemy z przejściami faz i trwałym modelem
-ucznia, a nie tylko jakość pojedynczej odpowiedzi modelu. Raport wskazuje m.in.
-powtórzone pytania, akapity, ilustracje i cofnięcie fazy nauki do diagnostyki.
+Laboratorium prowadzi sześć jawnie oznaczonych syntetycznych person — od ucznia
+nieznającego działu po ucznia zaawansowanego — przez cały dział genetyki
+molekularnej. Każda persona ma z góry określone granice wiedzy i błędne modele
+mentalne dla wszystkich LearningObjectives. Diagnostyczne „nie wiem” oraz
+misconceptions są deterministyczne, więc model symulujący ucznia nie może
+potajemnie korzystać z wiedzy eksperckiej.
+
+Runner korzysta z prawdziwych `TutorService`, `SideChatService` i
+`ConceptTutorService`, zapisuje oddzielnych syntetycznych użytkowników oraz
+śledzi mastery przed i po każdej odpowiedzi. Raport JSON i czytelny raport HTML
+w `eval-results/` zawierają pełny dialog, przejścia faz, źródła, tokeny, koszt
+(jeśli podano aktualne stawki), audyt reguł oraz niezależną ocenę drugiego
+wywołania modelu opartą na kontrolowanych materiałach.
+
+```bash
+# wymagane: dział i źródła są już zaimportowane, PostgreSQL działa
+EVALS_ALLOW_DATABASE_WRITES=true npm run eval:pilot
+EVALS_ALLOW_DATABASE_WRITES=true npm run eval:synthetic-class
+```
+
+Pilot uruchamia personę początkującą i zaawansowaną. Pełna klasa uruchamia sześć
+person po jednej iteracji. `EVAL_STUDENT_MODEL` i `EVAL_JUDGE_MODEL` pozwalają
+oddzielić model ucznia i sędziego od `OPENAI_MODEL`. `EVAL_MAX_TURNS`,
+`EVAL_MAX_OBJECTIVE_TURNS` oraz `EVAL_MAX_CONCEPT_TURNS` są bezpiecznikami, nie
+docelową długością sesji. Przekroczenie limitu celu kończy daną personę wynikiem
+FAIL zamiast finansować zapętloną rozmowę.
+Opcjonalne `EVAL_INPUT_USD_PER_MILLION` i `EVAL_OUTPUT_USD_PER_MILLION` pozwalają
+policzyć koszt według aktualnego cennika bez hardcodowania go w repozytorium.
+
+Uruchomienie jest celowo blokowane bez `EVALS_ALLOW_DATABASE_WRITES=true`, bo
+wykonuje płatne wywołania OpenAI i zapisuje audytowalne dane syntetyczne do bazy.
+Nie należy uruchamiać tego skryptu w CI ani przeciw produkcyjnej bazie uczniów.
 
 Uruchomienie zapisuje dane w bazie i wykonuje wiele wywołań OpenAI API, dlatego
 wymaga jawnej flagi:

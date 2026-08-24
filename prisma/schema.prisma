@@ -392,6 +392,8 @@ model Assessment {
   id                 String @id @default(cuid())
   studentAnswerId    String @unique
   rating             AssessmentRating
+  studentIntent      String?
+  evidenceLevel      String?
   masteryDelta       Float
   proposedMasteryDelta Float?
   nextAction         NextAction
