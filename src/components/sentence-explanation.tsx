@@ -32,7 +32,7 @@ export function SentenceExplanation({ children, sentence, source }: {
   }, []);
 
   function requestExplanation(event: React.MouseEvent<HTMLSpanElement>) {
-    if ((event.target as Element).closest("a")) return;
+    if ((event.target as Element).closest("a, button")) return;
     setOpen(true);
     setExplanation(undefined);
     setError(undefined);

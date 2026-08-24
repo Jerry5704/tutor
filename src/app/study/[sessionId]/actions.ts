@@ -11,6 +11,7 @@ import { ConceptDiscoveryService } from "@/server/services/concept-discovery-ser
 import { uniqueConceptIds } from "@/server/services/session-lifecycle-policy";
 import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
 import { SideChatService } from "@/server/services/side-chat-service";
+import { conceptMentions } from "@/server/services/concept-mentions";
 
 export async function submitSideQuestion(sessionId: string, form: FormData) {
   const student = await requireStudent();
@@ -19,6 +20,28 @@ export async function submitSideQuestion(sessionId: string, form: FormData) {
   if (!question) return;
   await new SideChatService(new OpenAIProvider()).ask(student.id, sessionId, question, submissionId || undefined);
   revalidatePath(`/study/${sessionId}`);
+}
+
+export async function openConceptMention(sessionId: string, messageId: string, term: string) {
+  const student = await requireStudent();
+  const message = await db.tutorMessage.findFirstOrThrow({
+    where: { id: messageId, sessionId, role: "TUTOR", session: { studentId: student.id, endedAt: null, pausedAt: null } },
+  });
+  const mention = conceptMentions(message.conceptMentions).find((item) => item.term.toLocaleLowerCase("pl-PL") === term.trim().toLocaleLowerCase("pl-PL"));
+  if (!mention || !message.content.toLocaleLowerCase("pl-PL").includes(mention.term.toLocaleLowerCase("pl-PL"))) throw new Error("Nieprawidłowa wzmianka o pojęciu.");
+
+  const query = `czym jest ${mention.term}`;
+  const existing = await new ConceptIntentService().resolve(student.id, sessionId, query);
+  if (existing) redirect(`/study/${sessionId}/concepts/${existing.slug}`);
+  const rateLimit = new AIRateLimitService();
+  if (!(await rateLimit.consume(student.id)).allowed) {
+    await rateLimit.notifyStudySession(student.id, sessionId);
+    redirect(`/study/${sessionId}#message-${messageId}`);
+  }
+  const concept = await new ConceptDiscoveryService(new OpenAIProvider()).discover(student.id, sessionId, query, message.learningObjectiveId ?? undefined);
+  if (!concept) redirect(`/study/${sessionId}?conceptUnavailable=1#message-${messageId}`);
+  revalidatePath(`/study/${sessionId}`);
+  redirect(`/study/${sessionId}/concepts/${concept.slug}`);
 }
 
 export async function submitAnswer(sessionId: string, form: FormData) {

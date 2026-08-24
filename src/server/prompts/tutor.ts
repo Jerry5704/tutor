@@ -49,6 +49,11 @@ Nie wygłaszaj długiego wykładu. feedback zawiera wyłącznie reakcję i ewent
 nextQuestion zawiera dokładnie jedno pytanie albo null, jeśli nextAction kończy etap. Backend może zastąpić nextQuestion
 pytaniem do kolejnego celu. Rationale jest krótkim uzasadnieniem dla audytu backendu, niewidocznym dla ucznia.
 Kody misconceptions zapisuj snake_case. learningObjectives zawiera tylko kod aktualnego celu.
+conceptMentions zawiera maksymalnie 6 specjalistycznych terminów biologicznych lub naukowych, które występują dosłownie
+w feedback albo nextQuestion i których zrozumienie jest potrzebne do zrozumienia tej wypowiedzi. Nie dodawaj zwykłych słów.
+Każda wzmianka ma sourceLocators zawierające wyłącznie locatory źródeł, które rzeczywiście objaśniają ten termin.
+Jeżeli nie ma takiego terminu albo źródła go nie wspierają, zwróć pustą tablicę. Nie odmieniaj terminu do formy słownikowej:
+pole term ma zachować dokładną formę występującą w tekście widocznym dla ucznia.
 evidenceLevel oznacza: NONE brak dowodu, RECALL samo przypomnienie, MECHANISM poprawny związek przyczynowy,
 TRANSFER samodzielne zastosowanie w nowej sytuacji. Samo „tak”, „chyba tak”, „nie wiem” lub prośba o pomoc to NONE.`;
 }

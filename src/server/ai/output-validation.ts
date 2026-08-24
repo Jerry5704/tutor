@@ -19,6 +19,14 @@ export function validateTutorAIResult(
   const allowedLocators = new Set(allowedSourceLocators);
   const acceptedSourceLocators = reportedSourceLocators.filter((locator) => allowedLocators.has(locator));
   const rejectedSourceLocators = reportedSourceLocators.filter((locator) => !allowedLocators.has(locator));
+  const acceptedConceptMentions = result.turn.conceptMentions
+    .map((mention) => ({
+      term: mention.term.trim(),
+      sourceLocators: [...new Set(mention.sourceLocators.filter((locator) => allowedLocators.has(locator)))],
+    }))
+    .filter((mention, index, all) => mention.term.length >= 2
+      && mention.sourceLocators.length > 0
+      && all.findIndex((item) => item.term.toLocaleLowerCase("pl-PL") === mention.term.toLocaleLowerCase("pl-PL")) === index);
   const objectiveCodesCorrected = reportedLearningObjectives.length !== 1
     || reportedLearningObjectives[0] !== expectedObjectiveCode;
   const issues = [
@@ -32,6 +40,7 @@ export function validateTutorAIResult(
       ...result.turn,
       learningObjectives: [expectedObjectiveCode],
       sourceLocators: acceptedSourceLocators,
+      conceptMentions: acceptedConceptMentions,
     },
     validationAudit: {
       reportedLearningObjectives,

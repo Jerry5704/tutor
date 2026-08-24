@@ -206,6 +206,7 @@ export class TutorService {
         nextAction: nextObjective ? "NEXT_OBJECTIVE" : "SHOW_PLAN",
         rationale: "Uczeń jawnie zgłosił brak wiedzy podczas diagnostyki; odpowiedź zapisano bez uruchamiania AI.",
         sourceLocators: [],
+        conceptMentions: [],
       },
       responseId: `policy:diagnostic-gap:${answerId}`,
       model: "deterministic-policy",
@@ -735,6 +736,9 @@ export class TutorService {
       tutorText: tutorMessage,
       defaultShow: showVisual,
     });
+    const conceptMentions = result.turn.conceptMentions.filter((mention) =>
+      tutorMessage.toLocaleLowerCase("pl-PL").includes(mention.term.toLocaleLowerCase("pl-PL")),
+    );
 
     await db.$transaction([
       db.tutorMessage.create({ data: {
@@ -744,6 +748,7 @@ export class TutorService {
         learningObjectiveId: messageObjectiveId,
         questionIntent,
         questionFingerprint: messageQuestionFingerprint,
+        conceptMentions,
         knowledgeAssetId: visual.assetId,
         showVisual: visual.showVisual,
       } }),

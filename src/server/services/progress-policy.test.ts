@@ -23,6 +23,7 @@ const turn = (overrides: Partial<TutorTurn> = {}): TutorTurn => ({
   nextAction: "TRANSFER_QUESTION",
   rationale: "Uczeń wyjaśnił mechanizm.",
   sourceLocators: [],
+  conceptMentions: [],
   ...overrides,
 });
 

@@ -11,10 +11,12 @@ import { db } from "@/server/db/client";
 import { annotateConceptText } from "@/server/services/concept-annotation";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
 import { sessionAcceptsInput } from "@/server/services/session-lifecycle-policy";
-import { beginPractice, pauseStudySession, resetUnitProgress, skipDiagnostic, submitAnswer, submitSideQuestion } from "./actions";
+import { conceptMentions } from "@/server/services/concept-mentions";
+import { beginPractice, openConceptMention, pauseStudySession, resetUnitProgress, skipDiagnostic, submitAnswer, submitSideQuestion } from "./actions";
 
-export default async function Study({ params }: { params: Promise<{ sessionId: string }> }) {
+export default async function Study({ params, searchParams }: { params: Promise<{ sessionId: string }>; searchParams: Promise<{ conceptUnavailable?: string }> }) {
   const { sessionId } = await params;
+  const { conceptUnavailable } = await searchParams;
   const student = await requireStudent();
   const session = await db.studySession.findFirst({
     where: { id: sessionId, studentId: student.id },
@@ -54,7 +56,8 @@ export default async function Study({ params }: { params: Promise<{ sessionId: s
     <ConceptText
       sessionId={session.id}
       explanationSource={message.role === "TUTOR" ? { kind: "STUDY_MESSAGE", id: message.id } : undefined}
-      segments={annotateConceptText(message.content, concepts)}
+      segments={annotateConceptText(message.content, concepts, Number.POSITIVE_INFINITY, conceptMentions(message.conceptMentions))}
+      candidateAction={message.role === "TUTOR" ? openConceptMention.bind(null, session.id, message.id) : undefined}
     />
     {message.id === latestVisualMessageId && message.learningObjective && <ConceptDiagram data={message.learningObjective.visualData} asset={message.knowledgeAsset ?? undefined} />}
   </div>;
@@ -65,6 +68,7 @@ export default async function Study({ params }: { params: Promise<{ sessionId: s
       <Link className="button secondary" href="/dashboard">Wróć do dashboardu</Link>
     </div>
     <ConceptMap sessionId={session.id} concepts={concepts} />
+    {conceptUnavailable === "1" && <p className="error">Nie udało się utworzyć rzetelnej karty z dostępnych materiałów. Termin pozostaje w rozmowie, ale tutor nie będzie zgadywał jego znaczenia.</p>}
     {focusQuestion && earlierMessages.length > 0 && <details className="concept-history">
       <summary>Pokaż wcześniejsze wyjaśnienie i rozmowę</summary>
       <section className="chat compact">{earlierMessages.map(renderMessage)}</section>

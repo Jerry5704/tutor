@@ -11,6 +11,10 @@ export const tutorTurnSchema = z.object({
   nextAction: z.enum(["PROBE", "GUIDED_QUESTION", "HINT", "EXPLAIN", "WORKED_EXAMPLE", "TRANSFER_QUESTION", "NEXT_OBJECTIVE", "SHOW_PLAN", "COMPLETE_SESSION"]),
   rationale: z.string().min(1),
   sourceLocators: z.array(z.string()),
+  conceptMentions: z.array(z.object({
+    term: z.string().min(2).max(80),
+    sourceLocators: z.array(z.string()),
+  })).max(6),
 });
 
 export type TutorTurn = z.infer<typeof tutorTurnSchema>;

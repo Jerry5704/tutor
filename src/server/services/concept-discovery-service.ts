@@ -35,6 +35,15 @@ export class ConceptDiscoveryService {
     private readonly knowledge = new KnowledgeService(),
   ) {}
 
+  private async addRequestedAlias(conceptId: string, alias: string) {
+    const normalizedAlias = normalizeAlias(alias);
+    await db.conceptAlias.upsert({
+      where: { conceptId_normalizedAlias: { conceptId, normalizedAlias } },
+      update: { alias },
+      create: { conceptId, alias, normalizedAlias },
+    });
+  }
+
   async discover(studentId: string, studySessionId: string, message: string, preferredObjectiveId?: string) {
     const term = requestedTerm(message);
     if (!term) return undefined;
@@ -57,7 +66,10 @@ export class ConceptDiscoveryService {
         ],
       },
     });
-    if (existing) return existing;
+    if (existing) {
+      await this.addRequestedAlias(existing.id, term);
+      return existing;
+    }
 
     const objectiveId = preferredObjectiveId ?? session.currentObjectiveId;
     if (!objectiveId) return undefined;
@@ -76,20 +88,40 @@ export class ConceptDiscoveryService {
     const generated = result.value;
     if (!generated.supportedBySources) return undefined;
 
-    const baseSlug = slugify(generated.canonicalName || term);
+    const canonicalName = (generated.canonicalName || term).trim();
+    const canonicalMatch = await db.concept.findFirst({
+      where: {
+        active: true,
+        curriculumVersionId: session.unit.course.curriculumVersionId,
+        AND: [
+          visibleConceptsFor(studentId),
+          { OR: [
+            { name: { equals: canonicalName, mode: "insensitive" } },
+            { aliases: { some: { normalizedAlias: normalizeAlias(canonicalName) } } },
+          ] },
+        ],
+      },
+    });
+    if (canonicalMatch) {
+      await this.addRequestedAlias(canonicalMatch.id, term);
+      return canonicalMatch;
+    }
+
+    const baseSlug = slugify(canonicalName);
     const collision = await db.concept.findUnique({
       where: { curriculumVersionId_slug: { curriculumVersionId: session.unit.course.curriculumVersionId, slug: baseSlug } },
     });
     const slug = collision ? `${baseSlug}-${studentId.slice(-6)}` : baseSlug;
     const aliases = new Map<string, string>();
-    for (const alias of [term, generated.canonicalName, ...generated.aliases].filter(Boolean)) {
-      aliases.set(normalizeAlias(alias), alias);
+    for (const alias of [term, canonicalName, ...generated.aliases].filter(Boolean)) {
+      const trimmed = alias.trim();
+      if (trimmed.length >= 2 && trimmed.length <= 80) aliases.set(normalizeAlias(trimmed), trimmed);
     }
     return db.concept.create({
       data: {
         curriculumVersionId: session.unit.course.curriculumVersionId,
         slug,
-        name: generated.canonicalName || term,
+        name: canonicalName,
         shortDefinition: generated.shortDefinition,
         simpleExplanation: generated.simpleExplanation,
         whyItMatters: generated.whyItMatters,
