@@ -4,6 +4,8 @@ import type { AIProvider, ConceptGenerationContext, ConceptTutorContext, QuickEx
 import { conceptTurnSchema, generatedConceptSchema, quickExplanationSchema, tutorTurnSchema } from "@/server/ai/contracts";
 import { quickExplanationInstructions } from "@/server/prompts/quick-explanation";
 import { tutorInstructions } from "@/server/prompts/tutor";
+import { conceptTutorInstructions } from "@/server/prompts/concept-tutor";
+import { conceptGenerationInstructions } from "@/server/prompts/concept-generation";
 
 export function tutorRequestInput(context: TutorContext) {
   return {
@@ -56,23 +58,9 @@ export class OpenAIProvider implements AIProvider {
   }
 
   async assessConcept(context: ConceptTutorContext) {
-    const sourceText = context.sources.map((item) => `[${item.locator}]\n${item.content.slice(0, 2500)}`).join("\n\n");
     const response = await this.client.responses.parse({
       model: this.model,
-      instructions: `Jesteś tutorem jednego pojęcia biologicznego dla ucznia liceum. Oceniasz wyłącznie pojęcie „${context.conceptName}”.
-Kontrolowana definicja: ${context.shortDefinition}
-Kontrolowane wyjaśnienie: ${context.simpleExplanation}
-Znaczenie: ${context.whyItMatters}
-Konkretny przykład: ${context.concreteExample ?? "brak"}
-Pytanie sprawdzające: ${context.checkQuestion ?? "brak"}
-Pytanie transferowe: ${context.transferQuestion ?? "brak"}
-Typowy błąd: ${context.commonMisconception ?? "brak zdefiniowanego błędu"}
-Materiał źródłowy: ${sourceText || "brak dodatkowych fragmentów; nie dodawaj faktów spoza kontrolowanej definicji"}
-Odpowiadaj po polsku i krótko. Najpierw reaguj na tok rozumowania ucznia. Jeśli odpowiedź jest błędna, daj możliwość poprawy.
-Pole directAnswer służy wyłącznie do bezpośredniej odpowiedzi na ostatnie pytanie tutora, gdy helpRequested=true. Odpowiedz wtedy dokładnie na wszystkie części tego pytania, maksymalnie w 1–3 zdaniach albo krótkiej liście. Bez wstępu pedagogicznego, bez ponownego wykładu i bez kolejnego pytania. Gdy helpRequested=false, ustaw directAnswer na pusty tekst.
-RECALL oznacza poprawną definicję, MECHANISM poprawne wyjaśnienie roli lub związku, TRANSFER zastosowanie w nowym przykładzie.
-Jeśli uczeń pokazał tylko RECALL, nextQuestion ma sprawdzić mechanizm. Jeśli pokazał mechanizm, ustaw CORRECT i nextQuestion=null.
-Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
+      instructions: conceptTutorInstructions(context),
       input: JSON.stringify({
         phase: context.phase,
         recentConversation: context.recentMessages,
@@ -95,10 +83,7 @@ Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
     const sourceText = context.sources.map((source) => `[${source.locator}]\n${source.content.slice(0, 3000)}`).join("\n\n");
     const response = await this.client.responses.parse({
       model: this.model,
-      instructions: `Tworzysz kontrolowaną kartę jednego pojęcia biologicznego dla ucznia IV klasy liceum, poziom rozszerzony.
-Użyj wyłącznie dostarczonych fragmentów zatwierdzonego źródła. Jeśli nie wystarczają do rzeczowego wyjaśnienia terminu, ustaw supportedBySources=false i pozostaw pozostałe pola krótkie.
-Wyjaśnienie ma budować rozumienie: definicja, mechanizm lub relacja, konkretny przykład, typowy błąd, pytanie bez podpowiedzi oraz pytanie transferowe.
-Nie nazywaj analogii faktem biologicznym. Nie dodawaj informacji, których nie ma w źródłach. Odpowiadaj po polsku.`,
+      instructions: conceptGenerationInstructions(context),
       input: JSON.stringify({
         requestedTerm: context.requestedTerm,
         learningObjective: context.objectiveDescription,

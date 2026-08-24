@@ -5,8 +5,8 @@ import { visibleConceptsFor } from "@/server/services/concept-visibility";
 import { confirmsUnderstanding, explicitlyRequestsHelp } from "@/server/services/progress-policy";
 import { aggregateConceptMastery } from "@/server/services/concept-evidence-policy";
 import { questionFingerprint } from "@/server/services/question-history";
+import { CONCEPT_TUTOR_PROMPT_VERSION } from "@/server/prompts/concept-tutor";
 
-const PROMPT_VERSION = "concept-tutor-v2";
 
 function targetMastery(assessment: ConceptTurn["assessment"], evidence: ConceptTurn["evidenceLevel"]) {
   if (assessment === "TRANSFER_DEMONSTRATED" && evidence === "TRANSFER") return 0.85;
@@ -205,7 +205,7 @@ export class ConceptTutorService {
         rationale: turn.rationale,
         providerResponseId: aiResult.responseId,
         model: aiResult.model,
-        promptVersion: PROMPT_VERSION,
+        promptVersion: CONCEPT_TUTOR_PROMPT_VERSION,
         inputTokens: aiResult.inputTokens,
         outputTokens: aiResult.outputTokens,
         knowledgeLocators: sources.map((item) => item.locator),
