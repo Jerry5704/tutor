@@ -133,6 +133,7 @@ export interface ConceptAIResult<T> {
   value: T;
   responseId: string;
   model: string;
+  latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
 }

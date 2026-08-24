@@ -356,6 +356,7 @@ model Assessment {
   studentAnswerId    String @unique
   rating             AssessmentRating
   masteryDelta       Float
+  proposedMasteryDelta Float?
   nextAction         NextAction
   rationale          String
   providerResponseId String?
@@ -375,6 +376,10 @@ model Assessment {
 model AssessmentObjective {
   assessmentId       String
   learningObjectiveId String
+  masteryBefore      Float?
+  masteryAfter       Float?
+  confidenceBefore   Float?
+  confidenceAfter    Float?
   assessment         Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   learningObjective  LearningObjective @relation(fields: [learningObjectiveId], references: [id])
 
@@ -627,7 +632,10 @@ model ConceptAssessment {
   questionIntent      QuestionIntent?
   questionFingerprint String?
   rating             AssessmentRating
+  evidenceLevel      String?
   masteryDelta       Float
+  conceptMasteryBefore Float?
+  conceptMasteryAfter  Float?
   objectiveMasteryBefore Float?
   objectiveMasteryAfter  Float?
   rationale          String
@@ -636,6 +644,7 @@ model ConceptAssessment {
   promptVersion      String
   inputTokens        Int?
   outputTokens       Int?
+  latencyMs          Int?
   knowledgeLocators  Json?
   createdAt          DateTime @default(now())
   message            ConceptMessage @relation(fields: [conceptMessageId], references: [id], onDelete: Cascade)

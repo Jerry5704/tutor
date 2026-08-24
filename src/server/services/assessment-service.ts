@@ -6,9 +6,13 @@ export class AssessmentService {
   async record(studentId: string, answerId: string, objectiveIds: string[], result: AIResult, delta: number, knowledge: KnowledgeExcerpt[] = [], trackMasteryAttempt = true) {
     return db.$transaction(async (tx) => {
       const updated = [];
+      const appliedDelta = trackMasteryAttempt ? delta : 0;
+      const objectiveAudit = [];
       for (const objectiveId of objectiveIds) {
         const current = await tx.studentMastery.findUnique({ where: { studentId_learningObjectiveId: { studentId, learningObjectiveId: objectiveId } } });
-        const mastery = Math.max(0, Math.min(1, (current?.mastery ?? 0) + delta));
+        const masteryBefore = current?.mastery ?? 0;
+        const confidenceBefore = current?.confidence ?? 0;
+        const mastery = Math.max(0, Math.min(1, masteryBefore + appliedDelta));
         const row = trackMasteryAttempt
           ? await tx.studentMastery.upsert({
               where: { studentId_learningObjectiveId: { studentId, learningObjectiveId: objectiveId } },
@@ -19,12 +23,22 @@ export class AssessmentService {
               data: { studentId, learningObjectiveId: objectiveId, mastery: 0, confidence: 0, attempts: 0 },
             });
         updated.push(row);
+        objectiveAudit.push({
+          learningObjectiveId: objectiveId,
+          masteryBefore,
+          masteryAfter: row.mastery,
+          confidenceBefore,
+          confidenceAfter: row.confidence,
+        });
       }
       const misconceptions = await Promise.all(result.turn.misconceptions.map((code) => tx.misconception.upsert({
         where: { code }, create: { code, description: code.replaceAll("_", " ") }, update: {},
       })));
       const assessment = await tx.assessment.create({ data: {
-        studentAnswerId: answerId, rating: result.turn.assessment, masteryDelta: delta,
+        studentAnswerId: answerId,
+        rating: result.turn.assessment,
+        masteryDelta: appliedDelta,
+        proposedMasteryDelta: delta,
         nextAction: result.turn.nextAction, rationale: result.turn.rationale,
         providerResponseId: result.responseId, model: result.model, promptVersion: PROMPT_VERSION,
         latencyMs: result.latencyMs, inputTokens: result.inputTokens, outputTokens: result.outputTokens,
@@ -36,7 +50,7 @@ export class AssessmentService {
           acceptedLearningObjectives: result.turn.learningObjectives,
           validationIssues: result.validationAudit?.issues ?? [],
         },
-        objectives: { create: objectiveIds.map((learningObjectiveId) => ({ learningObjectiveId })) },
+        objectives: { create: objectiveAudit },
         misconceptions: { create: misconceptions.map((item) => ({ misconceptionId: item.id })) },
       } });
       return { masteries: updated, assessmentId: assessment.id };

@@ -199,7 +199,10 @@ export class ConceptTutorService {
           : undefined,
         questionFingerprint: objectiveId && latestTutorQuestion ? questionFingerprint(objectiveId, latestTutorQuestion) : undefined,
         rating: help ? "INCORRECT" : turn.assessment,
+        evidenceLevel: help ? "NONE" : turn.evidenceLevel,
         masteryDelta: delta,
+        conceptMasteryBefore: previousMastery,
+        conceptMasteryAfter: nextMastery,
         objectiveMasteryBefore,
         objectiveMasteryAfter,
         rationale: turn.rationale,
@@ -208,6 +211,7 @@ export class ConceptTutorService {
         promptVersion: CONCEPT_TUTOR_PROMPT_VERSION,
         inputTokens: aiResult.inputTokens,
         outputTokens: aiResult.outputTokens,
+        latencyMs: aiResult.latencyMs,
         knowledgeLocators: sources.map((item) => item.locator),
       } });
       await tx.conceptMessage.create({ data: { conceptSessionId, role: "TUTOR", content: tutorContent } });

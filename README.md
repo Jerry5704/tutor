@@ -18,8 +18,9 @@ wersje podstawy programowej.
   osobne odpowiedzialności i można je testować bez wywołań LLM.
 - Odpowiedź dla ucznia i ocena maszynowa powstają razem jako Structured Output
   walidowany schematem Zod. Surowy tekst modelu nie jest parsowany regexami.
-- Każda zmiana mastery ma audytowalny rekord `Assessment`, zawierający ocenę,
-  deltę, wskazane cele, misconceptions, akcję i identyfikator odpowiedzi API.
+- Każda zmiana mastery wynikająca z oceny AI ma audytowalny rekord
+  `Assessment` albo `ConceptAssessment`, zawierający ocenę, poziom dowodu,
+  wartość przed i po zmianie, wskazane cele i identyfikator odpowiedzi API.
 - Struktura curriculum, źródła wiedzy i logika tutoringu są rozdzielone.
   Materiał biologiczny jest seedowany jako dane, nigdy w komponentach UI.
 - Wskaźnik gotowości jest ważoną średnią mastery aktywnych LearningObjectives,

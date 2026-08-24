@@ -58,6 +58,7 @@ export class OpenAIProvider implements AIProvider {
   }
 
   async assessConcept(context: ConceptTutorContext) {
+    const started = Date.now();
     const response = await this.client.responses.parse({
       model: this.model,
       instructions: conceptTutorInstructions(context),
@@ -74,12 +75,14 @@ export class OpenAIProvider implements AIProvider {
       value: response.output_parsed,
       responseId: response.id,
       model: this.model,
+      latencyMs: Date.now() - started,
       inputTokens: response.usage?.input_tokens,
       outputTokens: response.usage?.output_tokens,
     };
   }
 
   async generateConcept(context: ConceptGenerationContext) {
+    const started = Date.now();
     const sourceText = context.sources.map((source) => `[${source.locator}]\n${source.content.slice(0, 3000)}`).join("\n\n");
     const response = await this.client.responses.parse({
       model: this.model,
@@ -96,6 +99,7 @@ export class OpenAIProvider implements AIProvider {
       value: response.output_parsed,
       responseId: response.id,
       model: this.model,
+      latencyMs: Date.now() - started,
       inputTokens: response.usage?.input_tokens,
       outputTokens: response.usage?.output_tokens,
     };
