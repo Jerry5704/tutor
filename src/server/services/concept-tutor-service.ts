@@ -1,6 +1,4 @@
-import OpenAI from "openai";
-import { z } from "zod";
-import { zodTextFormat } from "openai/helpers/zod";
+import type { ConceptAIProvider, ConceptTurn } from "@/server/ai/contracts";
 import { db } from "@/server/db/client";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
@@ -8,18 +6,9 @@ import { confirmsUnderstanding, explicitlyRequestsHelp } from "@/server/services
 import { aggregateConceptMastery } from "@/server/services/concept-evidence-policy";
 import { questionFingerprint } from "@/server/services/question-history";
 
-const conceptTurnSchema = z.object({
-  assessment: z.enum(["INCORRECT", "PARTIALLY_CORRECT", "CORRECT", "TRANSFER_DEMONSTRATED"]),
-  evidenceLevel: z.enum(["NONE", "RECALL", "MECHANISM", "TRANSFER"]),
-  feedback: z.string(),
-  directAnswer: z.string(),
-  nextQuestion: z.string().nullable(),
-  rationale: z.string(),
-});
-
 const PROMPT_VERSION = "concept-tutor-v2";
 
-function targetMastery(assessment: z.infer<typeof conceptTurnSchema>["assessment"], evidence: z.infer<typeof conceptTurnSchema>["evidenceLevel"]) {
+function targetMastery(assessment: ConceptTurn["assessment"], evidence: ConceptTurn["evidenceLevel"]) {
   if (assessment === "TRANSFER_DEMONSTRATED" && evidence === "TRANSFER") return 0.85;
   if (assessment === "CORRECT" && (evidence === "MECHANISM" || evidence === "TRANSFER")) return 0.78;
   if (assessment === "CORRECT") return 0.55;
@@ -28,9 +17,10 @@ function targetMastery(assessment: z.infer<typeof conceptTurnSchema>["assessment
 }
 
 export class ConceptTutorService {
-  private readonly client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  private readonly model = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
-  private readonly knowledge = new KnowledgeService();
+  constructor(
+    private readonly ai: ConceptAIProvider,
+    private readonly knowledge = new KnowledgeService(),
+  ) {}
 
   private explanation(concept: { shortDefinition: string; simpleExplanation: string; whyItMatters: string; concreteExample: string | null }) {
     return `${concept.shortDefinition}\n\n${concept.simpleExplanation}\n\nPrzykład:\n${concept.concreteExample ?? concept.whyItMatters}\n\nDlaczego to ważne:\n${concept.whyItMatters}`;
@@ -139,35 +129,24 @@ export class ConceptTutorService {
     const sources = [...directSources, ...retrieved.map((item) => ({ locator: item.locator, content: item.content }))]
       .filter((item, index, all) => all.findIndex((other) => other.locator === item.locator) === index)
       .slice(0, 3);
-    const sourceText = sources.map((item) => `[${item.locator}]\n${item.content.slice(0, 2500)}`).join("\n\n");
     const help = explicitlyRequestsHelp(answer);
     const latestTutorQuestion = session.messages.find((message) => message.role === "TUTOR")?.content ?? "";
-    const response = await this.client.responses.parse({
-      model: this.model,
-      instructions: `Jesteś tutorem jednego pojęcia biologicznego dla ucznia liceum. Oceniasz wyłącznie pojęcie „${session.concept.name}”.
-Kontrolowana definicja: ${session.concept.shortDefinition}
-Kontrolowane wyjaśnienie: ${session.concept.simpleExplanation}
-Znaczenie: ${session.concept.whyItMatters}
-Konkretny przykład: ${session.concept.concreteExample ?? "brak"}
-Pytanie sprawdzające: ${session.concept.checkQuestion ?? "brak"}
-Pytanie transferowe: ${session.concept.transferQuestion ?? "brak"}
-Typowy błąd: ${session.concept.commonMisconception ?? "brak zdefiniowanego błędu"}
-Materiał źródłowy: ${sourceText || "brak dodatkowych fragmentów; nie dodawaj faktów spoza kontrolowanej definicji"}
-Odpowiadaj po polsku i krótko. Najpierw reaguj na tok rozumowania ucznia. Jeśli odpowiedź jest błędna, daj możliwość poprawy.
-Pole directAnswer służy wyłącznie do bezpośredniej odpowiedzi na ostatnie pytanie tutora, gdy helpRequested=true. Odpowiedz wtedy dokładnie na wszystkie części tego pytania, maksymalnie w 1–3 zdaniach albo krótkiej liście. Bez wstępu pedagogicznego, bez ponownego wykładu i bez kolejnego pytania. Gdy helpRequested=false, ustaw directAnswer na pusty tekst.
-RECALL oznacza poprawną definicję, MECHANISM poprawne wyjaśnienie roli lub związku, TRANSFER zastosowanie w nowym przykładzie.
-Jeśli uczeń pokazał tylko RECALL, nextQuestion ma sprawdzić mechanizm. Jeśli pokazał mechanizm, ustaw CORRECT i nextQuestion=null.
-Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
-      input: JSON.stringify({
-        phase: session.phase,
-        recentConversation: session.messages.toReversed().map((message) => ({ role: message.role, content: message.content })),
-        studentAnswer: answer,
-        helpRequested: help,
-      }),
-      text: { format: zodTextFormat(conceptTurnSchema, "concept_tutor_turn") },
+    const aiResult = await this.ai.assessConcept({
+      conceptName: session.concept.name,
+      shortDefinition: session.concept.shortDefinition,
+      simpleExplanation: session.concept.simpleExplanation,
+      whyItMatters: session.concept.whyItMatters,
+      concreteExample: session.concept.concreteExample ?? undefined,
+      checkQuestion: session.concept.checkQuestion ?? undefined,
+      transferQuestion: session.concept.transferQuestion ?? undefined,
+      commonMisconception: session.concept.commonMisconception ?? undefined,
+      sources,
+      phase: session.phase,
+      recentMessages: session.messages.toReversed().map((message) => ({ role: message.role, content: message.content })),
+      answer,
+      helpRequested: help,
     });
-    if (!response.output_parsed) throw new Error("OpenAI returned no concept tutor turn");
-    const turn = response.output_parsed;
+    const turn = aiResult.value;
     const target = help ? (state?.mastery ?? 0) : targetMastery(turn.assessment, turn.evidenceLevel);
     const previousMastery = state?.mastery ?? 0;
     const nextMastery = Math.max(previousMastery, target);
@@ -224,11 +203,11 @@ Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
         objectiveMasteryBefore,
         objectiveMasteryAfter,
         rationale: turn.rationale,
-        providerResponseId: response.id,
-        model: this.model,
+        providerResponseId: aiResult.responseId,
+        model: aiResult.model,
         promptVersion: PROMPT_VERSION,
-        inputTokens: response.usage?.input_tokens,
-        outputTokens: response.usage?.output_tokens,
+        inputTokens: aiResult.inputTokens,
+        outputTokens: aiResult.outputTokens,
         knowledgeLocators: sources.map((item) => item.locator),
       } });
       await tx.conceptMessage.create({ data: { conceptSessionId, role: "TUTOR", content: tutorContent } });

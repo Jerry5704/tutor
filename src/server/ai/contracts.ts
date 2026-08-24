@@ -48,7 +48,9 @@ export interface AIResult {
   outputTokens?: number;
 }
 
-export interface AIProvider { assessAndRespond(context: TutorContext): Promise<AIResult>; }
+export interface AIProvider extends ExplanationProvider, ConceptAIProvider {
+  assessAndRespond(context: TutorContext): Promise<AIResult>;
+}
 
 export const quickExplanationSchema = z.object({
   explanation: z.string().min(1).max(900),
@@ -68,4 +70,65 @@ export interface QuickExplanationContext {
 
 export interface ExplanationProvider {
   explainSelection(context: QuickExplanationContext): Promise<QuickExplanation>;
+}
+
+export const conceptTurnSchema = z.object({
+  assessment: z.enum(["INCORRECT", "PARTIALLY_CORRECT", "CORRECT", "TRANSFER_DEMONSTRATED"]),
+  evidenceLevel: z.enum(["NONE", "RECALL", "MECHANISM", "TRANSFER"]),
+  feedback: z.string(),
+  directAnswer: z.string(),
+  nextQuestion: z.string().nullable(),
+  rationale: z.string(),
+});
+
+export type ConceptTurn = z.infer<typeof conceptTurnSchema>;
+
+export interface ConceptTutorContext {
+  conceptName: string;
+  shortDefinition: string;
+  simpleExplanation: string;
+  whyItMatters: string;
+  concreteExample?: string;
+  checkQuestion?: string;
+  transferQuestion?: string;
+  commonMisconception?: string;
+  sources: Array<{ locator: string; content: string }>;
+  phase: string;
+  recentMessages: { role: "TUTOR" | "STUDENT"; content: string }[];
+  answer: string;
+  helpRequested: boolean;
+}
+
+export const generatedConceptSchema = z.object({
+  supportedBySources: z.boolean(),
+  canonicalName: z.string(),
+  shortDefinition: z.string(),
+  simpleExplanation: z.string(),
+  whyItMatters: z.string(),
+  commonMisconception: z.string(),
+  concreteExample: z.string(),
+  checkQuestion: z.string(),
+  transferQuestion: z.string(),
+  aliases: z.array(z.string()),
+});
+
+export type GeneratedConcept = z.infer<typeof generatedConceptSchema>;
+
+export interface ConceptGenerationContext {
+  requestedTerm: string;
+  objectiveDescription: string;
+  sources: Array<{ locator: string; content: string }>;
+}
+
+export interface ConceptAIResult<T> {
+  value: T;
+  responseId: string;
+  model: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+export interface ConceptAIProvider {
+  assessConcept(context: ConceptTutorContext): Promise<ConceptAIResult<ConceptTurn>>;
+  generateConcept(context: ConceptGenerationContext): Promise<ConceptAIResult<GeneratedConcept>>;
 }

@@ -15,14 +15,15 @@ export async function submitAnswer(sessionId: string, form: FormData) {
   const answer = String(form.get("answer") ?? "").trim();
   const submissionId = String(form.get("submissionId") ?? "").trim();
   if (!answer) return;
-  const requestedConcept = await new ConceptDiscoveryService().discover(student.id, sessionId, answer);
+  const ai = new OpenAIProvider();
+  const requestedConcept = await new ConceptDiscoveryService(ai).discover(student.id, sessionId, answer);
   const concept = requestedConcept ?? await new ConceptIntentService().resolve(student.id, sessionId, answer);
   if (concept) {
-    const conceptSession = await new ConceptTutorService().start(student.id, sessionId, concept.slug, "NOT_FAMILIAR", answer);
+    const conceptSession = await new ConceptTutorService(ai).start(student.id, sessionId, concept.slug, "NOT_FAMILIAR", answer);
     revalidatePath(`/study/${sessionId}`);
     redirect(`/concept-sessions/${conceptSession.id}`);
   }
-  await new TutorService(new OpenAIProvider()).answer(student.id, sessionId, answer, submissionId || undefined);
+  await new TutorService(ai).answer(student.id, sessionId, answer, submissionId || undefined);
   revalidatePath(`/study/${sessionId}`);
 }
 

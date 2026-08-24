@@ -1,22 +1,7 @@
-import OpenAI from "openai";
-import { z } from "zod";
-import { zodTextFormat } from "openai/helpers/zod";
+import type { ConceptAIProvider } from "@/server/ai/contracts";
 import { db } from "@/server/db/client";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
-
-const generatedConceptSchema = z.object({
-  supportedBySources: z.boolean(),
-  canonicalName: z.string(),
-  shortDefinition: z.string(),
-  simpleExplanation: z.string(),
-  whyItMatters: z.string(),
-  commonMisconception: z.string(),
-  concreteExample: z.string(),
-  checkQuestion: z.string(),
-  transferQuestion: z.string(),
-  aliases: z.array(z.string()),
-});
 
 const TERM_PATTERNS = [
   /\bco to jest\s+[„"']?(.+?)[”"']?[?.!]*$/iu,
@@ -45,9 +30,10 @@ function slugify(value: string) {
 }
 
 export class ConceptDiscoveryService {
-  private readonly client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  private readonly model = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
-  private readonly knowledge = new KnowledgeService();
+  constructor(
+    private readonly ai: ConceptAIProvider,
+    private readonly knowledge = new KnowledgeService(),
+  ) {}
 
   async discover(studentId: string, studySessionId: string, message: string, preferredObjectiveId?: string) {
     const term = requestedTerm(message);
@@ -82,18 +68,13 @@ export class ConceptDiscoveryService {
     const sources = await this.knowledge.retrieveForObjective(objective.id, term, 3);
     if (!sources.length) return undefined;
 
-    const sourceText = sources.map((source) => `[${source.locator}]\n${source.content.slice(0, 3000)}`).join("\n\n");
-    const response = await this.client.responses.parse({
-      model: this.model,
-      instructions: `Tworzysz kontrolowaną kartę jednego pojęcia biologicznego dla ucznia IV klasy liceum, poziom rozszerzony.
-Użyj wyłącznie dostarczonych fragmentów zatwierdzonego źródła. Jeśli nie wystarczają do rzeczowego wyjaśnienia terminu, ustaw supportedBySources=false i pozostaw pozostałe pola krótkie.
-Wyjaśnienie ma budować rozumienie: definicja, mechanizm lub relacja, konkretny przykład, typowy błąd, pytanie bez podpowiedzi oraz pytanie transferowe.
-Nie nazywaj analogii faktem biologicznym. Nie dodawaj informacji, których nie ma w źródłach. Odpowiadaj po polsku.`,
-      input: JSON.stringify({ requestedTerm: term, learningObjective: objective.description, sources: sourceText }),
-      text: { format: zodTextFormat(generatedConceptSchema, "generated_concept") },
+    const result = await this.ai.generateConcept({
+      requestedTerm: term,
+      objectiveDescription: objective.description,
+      sources: sources.map((source) => ({ locator: source.locator, content: source.content })),
     });
-    const generated = response.output_parsed;
-    if (!generated?.supportedBySources) return undefined;
+    const generated = result.value;
+    if (!generated.supportedBySources) return undefined;
 
     const baseSlug = slugify(generated.canonicalName || term);
     const collision = await db.concept.findUnique({

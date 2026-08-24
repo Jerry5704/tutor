@@ -5,6 +5,7 @@ import { requireStudent } from "@/server/auth/session";
 import { ConceptTutorService } from "@/server/services/concept-tutor-service";
 import { ConceptIntentService } from "@/server/services/concept-intent-service";
 import { ConceptDiscoveryService } from "@/server/services/concept-discovery-service";
+import { OpenAIProvider } from "@/server/ai/openai-provider";
 import { db } from "@/server/db/client";
 
 export async function submitConceptAnswer(conceptSessionId: string, form: FormData) {
@@ -12,11 +13,12 @@ export async function submitConceptAnswer(conceptSessionId: string, form: FormDa
   const answer = String(form.get("answer") ?? "").trim();
   const submissionId = String(form.get("submissionId") ?? "").trim();
   if (!answer) return;
+  const ai = new OpenAIProvider();
   const current = await db.conceptSession.findFirstOrThrow({
     where: { id: conceptSessionId, studentId: student.id, status: "ACTIVE" },
     include: { concept: { include: { objectives: { orderBy: { importance: "desc" }, take: 1 } } } },
   });
-  const requested = await new ConceptDiscoveryService().discover(
+  const requested = await new ConceptDiscoveryService(ai).discover(
     student.id,
     current.parentStudySessionId,
     answer,
@@ -24,18 +26,18 @@ export async function submitConceptAnswer(conceptSessionId: string, form: FormDa
   );
   const discovered = requested ?? await new ConceptIntentService().resolve(student.id, current.parentStudySessionId, answer);
   if (discovered && discovered.id !== current.conceptId) {
-    const branch = await new ConceptTutorService().start(student.id, current.parentStudySessionId, discovered.slug, "NOT_FAMILIAR", answer, current.id);
+    const branch = await new ConceptTutorService(ai).start(student.id, current.parentStudySessionId, discovered.slug, "NOT_FAMILIAR", answer, current.id);
     revalidatePath(`/study/${current.parentStudySessionId}`);
     revalidatePath(`/concept-sessions/${conceptSessionId}`);
     redirect(`/concept-sessions/${branch.id}`);
   }
-  await new ConceptTutorService().answer(student.id, conceptSessionId, answer, submissionId || undefined);
+  await new ConceptTutorService(ai).answer(student.id, conceptSessionId, answer, submissionId || undefined);
   revalidatePath(`/concept-sessions/${conceptSessionId}`);
 }
 
 export async function pauseConceptSession(conceptSessionId: string) {
   const student = await requireStudent();
-  const result = await new ConceptTutorService().pause(student.id, conceptSessionId);
+  const result = await new ConceptTutorService(new OpenAIProvider()).pause(student.id, conceptSessionId);
   revalidatePath(`/study/${result.parentStudySessionId}`);
   if (result.parentConceptSessionId) revalidatePath(`/concept-sessions/${result.parentConceptSessionId}`);
   redirect(result.parentConceptSessionId
