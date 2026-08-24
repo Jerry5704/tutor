@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { db } from "@/server/db/client";
+import { internetVisualsEnabled } from "@/server/config/env";
 
 type MetadataValue = { value?: string };
 type CommonsPage = {
@@ -35,7 +36,7 @@ function trustedImageUrl(value?: string) {
 
 export class WikimediaVisualProvider {
   async findAndStore(learningObjectiveId: string, excludedIds: string[] = []) {
-    if (process.env.INTERNET_VISUALS_ENABLED === "false") return undefined;
+    if (!internetVisualsEnabled()) return undefined;
     const objective = await db.learningObjective.findUnique({
       where: { id: learningObjectiveId },
       select: { code: true, title: true, description: true },

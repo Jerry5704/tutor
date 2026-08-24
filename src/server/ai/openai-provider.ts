@@ -6,6 +6,7 @@ import { quickExplanationInstructions } from "@/server/prompts/quick-explanation
 import { tutorInstructions } from "@/server/prompts/tutor";
 import { conceptTutorInstructions } from "@/server/prompts/concept-tutor";
 import { conceptGenerationInstructions } from "@/server/prompts/concept-generation";
+import { openAIConfig } from "@/server/config/env";
 
 export function tutorRequestInput(context: TutorContext) {
   return {
@@ -20,8 +21,9 @@ export function tutorRequestInput(context: TutorContext) {
 }
 
 export class OpenAIProvider implements AIProvider {
-  private readonly client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  private readonly model = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
+  private readonly config = openAIConfig();
+  private readonly client = new OpenAI({ apiKey: this.config.apiKey });
+  private readonly model = this.config.model;
 
   async assessAndRespond(context: TutorContext) {
     const started = Date.now();

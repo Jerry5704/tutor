@@ -2,20 +2,19 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/server/db/client";
+import { authSecret, isProduction } from "@/server/config/env";
 
 const COOKIE = "tutor_session";
 
 function secret() {
-  const value = process.env.AUTH_SECRET;
-  if (!value || value.length < 32) throw new Error("AUTH_SECRET must have at least 32 characters");
-  return new TextEncoder().encode(value);
+  return new TextEncoder().encode(authSecret());
 }
 
 export async function createSession(userId: string) {
   const token = await new SignJWT({ userId }).setProtectedHeader({ alg: "HS256" })
     .setIssuedAt().setExpirationTime("14d").sign(secret());
   (await cookies()).set(COOKIE, token, {
-    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production",
+    httpOnly: true, sameSite: "lax", secure: isProduction(),
     path: "/", maxAge: 60 * 60 * 24 * 14,
   });
 }
