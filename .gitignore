@@ -1,0 +1,13 @@
+node_modules
+.next
+.env
+.env.local
+*.log
+*.tsbuildinfo
+src/generated/prisma
+eval-results/
+
+# Legal source materials and their derived OCR stay local.
+materials/*.pdf
+materials/derived/
+.tools/

@@ -1,0 +1,50 @@
+{
+  "name": "tutor-biologii",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome lint src prisma/*.ts *.ts",
+    "test": "tsx --test src/server/services/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:unit-1": "tsx prisma/seed-unit-1.ts",
+    "db:seed:unit-1-concepts": "tsx prisma/seed-unit-1-concepts.ts",
+    "db:ingest:unit-1": "tsx prisma/ingest-unit-1-source.ts",
+    "ocr:setup": "bash scripts/setup-local-ocr.sh",
+    "ocr:unit-1": "bash scripts/ocr-textbook-unit.sh",
+    "eval:synthetic-class": "tsx evals/run-synthetic-class.ts"
+    ,"eval:full-unit": "tsx evals/run-full-unit-simulation.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
+    "bcryptjs": "3.0.3",
+    "jose": "6.2.9",
+    "next": "16.3.1",
+    "openai": "7.5.0",
+    "pg": "8.16.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.9",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.15.6",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "eslint": "9.39.1",
+    "eslint-config-next": "16.3.1",
+    "prisma": "7.9.1",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2"
+  }
+}

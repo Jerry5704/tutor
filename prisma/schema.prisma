@@ -1,0 +1,632 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CourseLevel {
+  BASIC
+  ADVANCED
+}
+
+enum SessionPhase {
+  DIAGNOSTIC
+  PLAN
+  LEARNING
+  MOCK_EXAM
+  COMPLETED
+}
+
+enum MessageRole {
+  TUTOR
+  STUDENT
+}
+
+enum AssessmentRating {
+  INCORRECT
+  PARTIALLY_CORRECT
+  CORRECT
+  TRANSFER_DEMONSTRATED
+}
+
+enum NextAction {
+  PROBE
+  GUIDED_QUESTION
+  HINT
+  EXPLAIN
+  WORKED_EXAMPLE
+  TRANSFER_QUESTION
+  NEXT_OBJECTIVE
+  SHOW_PLAN
+  COMPLETE_SESSION
+}
+
+enum SourceStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+}
+
+enum SessionObjectiveStatus {
+  NOT_STARTED
+  DIAGNOSING
+  LEARNING
+  MASTERED
+}
+
+enum LearningStep {
+  EXPLAIN
+  PRACTICE
+  TRANSFER
+}
+
+enum ConceptFamiliarity {
+  UNKNOWN
+  NOT_FAMILIAR
+  SOMEWHAT_FAMILIAR
+  FAMILIAR
+}
+
+enum ConceptSessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  RESET
+}
+
+enum ConceptSessionPhase {
+  ORIENT
+  EXPLAIN
+  PRACTICE
+  CHECK
+}
+
+enum ConceptRelationType {
+  PREREQUISITE
+  RELATED
+  PART_OF
+  CONTRASTS_WITH
+}
+
+enum ConceptOrigin {
+  CURATED
+  AI_GENERATED
+}
+
+enum ConceptReviewStatus {
+  APPROVED
+  PENDING_REVIEW
+  REJECTED
+}
+
+model School {
+  id        String   @id @default(cuid())
+  name      String
+  city      String
+  createdAt DateTime @default(now())
+  courses   Course[]
+}
+
+model CurriculumVersion {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  title       String
+  validFrom   DateTime?
+  validTo     DateTime?
+  createdAt   DateTime @default(now())
+  courses     Course[]
+  sourceLinks KnowledgeSourceCurriculum[]
+  concepts    Concept[]
+}
+
+model Subject {
+  id      String   @id @default(cuid())
+  code    String   @unique
+  name    String
+  courses Course[]
+}
+
+model Course {
+  id                  String @id @default(cuid())
+  schoolId            String
+  curriculumVersionId String
+  subjectId           String
+  grade               Int
+  level               CourseLevel
+  title               String
+  active              Boolean @default(true)
+  school              School @relation(fields: [schoolId], references: [id])
+  curriculumVersion   CurriculumVersion @relation(fields: [curriculumVersionId], references: [id])
+  subject             Subject @relation(fields: [subjectId], references: [id])
+  units               Unit[]
+  enrollments         Enrollment[]
+
+  @@unique([schoolId, curriculumVersionId, subjectId, grade, level])
+}
+
+model Unit {
+  id          String @id @default(cuid())
+  courseId    String
+  slug        String
+  title       String
+  order       Int
+  description String
+  course      Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  topics      Topic[]
+  sessions    StudySession[]
+  sourceLinks KnowledgeSourceUnit[]
+
+  @@unique([courseId, slug])
+  @@unique([courseId, order])
+}
+
+model Topic {
+  id          String @id @default(cuid())
+  unitId      String
+  title       String
+  order       Int
+  unit        Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  objectives  LearningObjective[]
+  sourceLinks KnowledgeSourceTopic[]
+
+  @@unique([unitId, order])
+}
+
+model LearningObjective {
+  id                   String @id @default(cuid())
+  topicId              String
+  code                 String @unique
+  title                String
+  order                Int
+  description          String
+  diagnosticPrompt     String
+  transferPrompt       String
+  hook                 String
+  microExplanation     String
+  workedExample        String
+  practicePrompt       String
+  visualData           Json
+  importance           Float @default(1)
+  maturaRelevant       Boolean @default(false)
+  maturaRequirementId  String?
+  active               Boolean @default(true)
+  topic                Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  masteries            StudentMastery[]
+  assessmentObjectives AssessmentObjective[]
+  reviewSchedules      ReviewSchedule[]
+  sourceLinks          KnowledgeSourceObjective[]
+  sessionStates        SessionObjectiveState[]
+  tutorMessages        TutorMessage[]
+  visualAssets         KnowledgeAsset[]
+  concepts             ConceptObjective[]
+
+  @@unique([topicId, order])
+}
+
+model User {
+  id           String @id @default(cuid())
+  email        String @unique
+  passwordHash String
+  isSynthetic  Boolean @default(false)
+  createdAt    DateTime @default(now())
+  profile      StudentProfile?
+
+  @@index([isSynthetic])
+}
+
+model StudentProfile {
+  id          String @id @default(cuid())
+  userId      String @unique
+  displayName String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+  masteries   StudentMastery[]
+  sessions    StudySession[]
+  reviews     ReviewSchedule[]
+  conceptStates StudentConceptState[]
+  conceptSessions ConceptSession[]
+  generatedConcepts Concept[] @relation("ConceptCreator")
+}
+
+model Enrollment {
+  id        String @id @default(cuid())
+  studentId String
+  courseId  String
+  createdAt DateTime @default(now())
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course    Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+}
+
+model StudentMastery {
+  id                  String @id @default(cuid())
+  studentId           String
+  learningObjectiveId String
+  mastery             Float @default(0)
+  confidence          Float @default(0)
+  attempts            Int @default(0)
+  lastPracticedAt     DateTime?
+  updatedAt           DateTime @updatedAt
+  student             StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  learningObjective   LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, learningObjectiveId])
+}
+
+model StudySession {
+  id                 String @id @default(cuid())
+  studentId          String
+  unitId             String
+  phase              SessionPhase @default(DIAGNOSTIC)
+  currentObjectiveId String?
+  scaffoldLevel      Int @default(0)
+  objectiveAttempts  Int @default(0)
+  awaitingUnderstandingCheck Boolean @default(false)
+  promptVersion      String @default("tutor-v1")
+  startedAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  endedAt            DateTime?
+  student            StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  unit               Unit @relation(fields: [unitId], references: [id])
+  messages           TutorMessage[]
+  answers            StudentAnswer[]
+  teacherScopeNote   TeacherScopeNote?
+  objectiveStates    SessionObjectiveState[]
+  conceptSessions    ConceptSession[]
+
+  @@index([studentId, unitId, endedAt])
+}
+
+model SessionObjectiveState {
+  sessionId           String
+  learningObjectiveId String
+  status              SessionObjectiveStatus @default(NOT_STARTED)
+  diagnosticAttempts  Int @default(0)
+  practicedAttempts   Int @default(0)
+  consecutiveStruggles Int @default(0)
+  clarificationAttempts Int @default(0)
+  workedExamplesShown Int @default(0)
+  learningStep         LearningStep @default(EXPLAIN)
+  updatedAt           DateTime @updatedAt
+  session             StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  learningObjective   LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, learningObjectiveId])
+  @@index([sessionId, status])
+}
+
+model TeacherScopeNote {
+  id        String @id @default(cuid())
+  sessionId String @unique
+  content   String
+  createdAt DateTime @default(now())
+  session   StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model TutorMessage {
+  id        String @id @default(cuid())
+  sessionId String
+  role      MessageRole
+  content   String
+  learningObjectiveId String?
+  knowledgeAssetId String?
+  showVisual Boolean @default(false)
+  createdAt DateTime @default(now())
+  session   StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  learningObjective LearningObjective? @relation(fields: [learningObjectiveId], references: [id])
+  knowledgeAsset KnowledgeAsset? @relation(fields: [knowledgeAssetId], references: [id], onDelete: SetNull)
+  returningConceptSessions ConceptSession[] @relation("ConceptSessionReturnMessage")
+
+  @@index([sessionId, createdAt])
+  @@index([knowledgeAssetId])
+}
+
+model StudentAnswer {
+  id        String @id @default(cuid())
+  sessionId String
+  content   String
+  submissionId String? @unique
+  createdAt DateTime @default(now())
+  session   StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  assessment Assessment?
+}
+
+model Assessment {
+  id                 String @id @default(cuid())
+  studentAnswerId    String @unique
+  rating             AssessmentRating
+  masteryDelta       Float
+  nextAction         NextAction
+  rationale          String
+  providerResponseId String?
+  model              String
+  promptVersion      String
+  latencyMs          Int?
+  inputTokens        Int?
+  outputTokens       Int?
+  knowledgeLocators  Json?
+  createdAt          DateTime @default(now())
+  studentAnswer      StudentAnswer @relation(fields: [studentAnswerId], references: [id], onDelete: Cascade)
+  objectives         AssessmentObjective[]
+  misconceptions     AssessmentMisconception[]
+}
+
+model AssessmentObjective {
+  assessmentId       String
+  learningObjectiveId String
+  assessment         Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  learningObjective  LearningObjective @relation(fields: [learningObjectiveId], references: [id])
+
+  @@id([assessmentId, learningObjectiveId])
+}
+
+model Misconception {
+  id          String @id @default(cuid())
+  code        String @unique
+  description String
+  assessments AssessmentMisconception[]
+}
+
+model AssessmentMisconception {
+  assessmentId   String
+  misconceptionId String
+  assessment     Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  misconception  Misconception @relation(fields: [misconceptionId], references: [id])
+
+  @@id([assessmentId, misconceptionId])
+}
+
+model ReviewSchedule {
+  id                  String @id @default(cuid())
+  studentId           String
+  learningObjectiveId String
+  dueAt               DateTime
+  intervalDays        Int @default(1)
+  easeFactor          Float @default(2.5)
+  repetitions         Int @default(0)
+  student             StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  learningObjective   LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, learningObjectiveId])
+  @@index([studentId, dueAt])
+}
+
+model KnowledgeSource {
+  id          String @id @default(cuid())
+  title       String
+  sourceType  String
+  provenance  String
+  rightsNote  String
+  version     String?
+  status      SourceStatus @default(DRAFT)
+  createdAt   DateTime @default(now())
+  chunks      KnowledgeChunk[]
+  curricula   KnowledgeSourceCurriculum[]
+  units       KnowledgeSourceUnit[]
+  topics      KnowledgeSourceTopic[]
+  objectives  KnowledgeSourceObjective[]
+  assets      KnowledgeAsset[]
+}
+
+model KnowledgeAsset {
+  id                  String @id @default(cuid())
+  key                 String @unique
+  learningObjectiveId String
+  knowledgeSourceId   String?
+  sourceType          String
+  mediaType           String @default("image/png")
+  localFileName       String?
+  externalUrl         String?
+  sourcePage          Int?
+  caption             String
+  altText             String
+  attribution         String
+  rightsNote          String
+  priority            Int @default(100)
+  status              SourceStatus @default(DRAFT)
+  metadata            Json?
+  createdAt           DateTime @default(now())
+  learningObjective   LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+  knowledgeSource     KnowledgeSource? @relation(fields: [knowledgeSourceId], references: [id], onDelete: SetNull)
+  tutorMessages       TutorMessage[]
+
+  @@index([learningObjectiveId, status, priority])
+}
+
+model KnowledgeChunk {
+  id        String @id @default(cuid())
+  sourceId  String
+  content   String
+  locator   String?
+  metadata  Json?
+  source    KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  concepts  ConceptSource[]
+
+  @@index([sourceId])
+}
+
+model Concept {
+  id                    String @id @default(cuid())
+  curriculumVersionId   String
+  slug                  String
+  name                  String
+  shortDefinition       String
+  simpleExplanation     String
+  whyItMatters          String
+  commonMisconception   String?
+  concreteExample       String?
+  checkQuestion         String?
+  transferQuestion      String?
+  visualData            Json?
+  active                Boolean @default(true)
+  origin                ConceptOrigin @default(CURATED)
+  reviewStatus          ConceptReviewStatus @default(APPROVED)
+  createdForStudentId   String?
+  sourceQuestion        String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  curriculumVersion     CurriculumVersion @relation(fields: [curriculumVersionId], references: [id], onDelete: Cascade)
+  createdForStudent     StudentProfile? @relation("ConceptCreator", fields: [createdForStudentId], references: [id], onDelete: Cascade)
+  aliases               ConceptAlias[]
+  objectives            ConceptObjective[]
+  sources               ConceptSource[]
+  studentStates         StudentConceptState[]
+  sessions              ConceptSession[]
+  outgoingRelations     ConceptRelation[] @relation("ConceptRelationSource")
+  incomingRelations     ConceptRelation[] @relation("ConceptRelationTarget")
+
+  @@unique([curriculumVersionId, slug])
+  @@index([curriculumVersionId, active])
+  @@index([createdForStudentId, reviewStatus])
+}
+
+model ConceptAlias {
+  id              String @id @default(cuid())
+  conceptId       String
+  alias           String
+  normalizedAlias String
+  concept         Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@unique([conceptId, normalizedAlias])
+  @@index([normalizedAlias])
+}
+
+model ConceptObjective {
+  conceptId          String
+  learningObjectiveId String
+  importance         Float @default(1)
+  concept            Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  learningObjective  LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+
+  @@id([conceptId, learningObjectiveId])
+  @@index([learningObjectiveId])
+}
+
+model ConceptRelation {
+  sourceConceptId String
+  targetConceptId String
+  relationType    ConceptRelationType
+  sourceConcept   Concept @relation("ConceptRelationSource", fields: [sourceConceptId], references: [id], onDelete: Cascade)
+  targetConcept   Concept @relation("ConceptRelationTarget", fields: [targetConceptId], references: [id], onDelete: Cascade)
+
+  @@id([sourceConceptId, targetConceptId, relationType])
+  @@index([targetConceptId, relationType])
+}
+
+model ConceptSource {
+  conceptId        String
+  knowledgeChunkId String
+  concept          Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  knowledgeChunk   KnowledgeChunk @relation(fields: [knowledgeChunkId], references: [id], onDelete: Cascade)
+
+  @@id([conceptId, knowledgeChunkId])
+  @@index([knowledgeChunkId])
+}
+
+model StudentConceptState {
+  studentId        String
+  conceptId        String
+  selfFamiliarity  ConceptFamiliarity @default(UNKNOWN)
+  mastery          Float @default(0)
+  confidence       Float @default(0)
+  attempts         Int @default(0)
+  evidenceCount    Int @default(0)
+  lastPracticedAt  DateTime?
+  updatedAt        DateTime @updatedAt
+  student          StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  concept          Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, conceptId])
+  @@index([studentId, mastery])
+}
+
+model ConceptSession {
+  id                   String @id @default(cuid())
+  studentId            String
+  conceptId            String
+  parentStudySessionId String
+  returnToMessageId    String?
+  parentConceptSessionId String?
+  status               ConceptSessionStatus @default(ACTIVE)
+  phase                ConceptSessionPhase @default(ORIENT)
+  scaffoldLevel        Int @default(0)
+  startedAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  endedAt              DateTime?
+  student              StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  concept              Concept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  parentStudySession   StudySession @relation(fields: [parentStudySessionId], references: [id], onDelete: Cascade)
+  returnToMessage      TutorMessage? @relation("ConceptSessionReturnMessage", fields: [returnToMessageId], references: [id], onDelete: SetNull)
+  parentConceptSession ConceptSession? @relation("ConceptSessionBranches", fields: [parentConceptSessionId], references: [id], onDelete: SetNull)
+  childConceptSessions ConceptSession[] @relation("ConceptSessionBranches")
+  messages             ConceptMessage[]
+
+  @@index([studentId, status, updatedAt])
+  @@index([parentStudySessionId, status])
+  @@index([parentConceptSessionId, status])
+}
+
+model ConceptMessage {
+  id               String @id @default(cuid())
+  conceptSessionId String
+  submissionId     String? @unique
+  role             MessageRole
+  content          String
+  createdAt        DateTime @default(now())
+  session          ConceptSession @relation(fields: [conceptSessionId], references: [id], onDelete: Cascade)
+  assessment       ConceptAssessment?
+
+  @@index([conceptSessionId, createdAt])
+}
+
+model ConceptAssessment {
+  id                 String @id @default(cuid())
+  conceptMessageId   String @unique
+  rating             AssessmentRating
+  masteryDelta       Float
+  rationale          String
+  providerResponseId String?
+  model              String
+  promptVersion      String
+  inputTokens        Int?
+  outputTokens       Int?
+  knowledgeLocators  Json?
+  createdAt          DateTime @default(now())
+  message            ConceptMessage @relation(fields: [conceptMessageId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeSourceCurriculum {
+  sourceId           String
+  curriculumVersionId String
+  source             KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  curriculumVersion  CurriculumVersion @relation(fields: [curriculumVersionId], references: [id], onDelete: Cascade)
+  @@id([sourceId, curriculumVersionId])
+}
+
+model KnowledgeSourceUnit {
+  sourceId String
+  unitId   String
+  source   KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  unit     Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  @@id([sourceId, unitId])
+}
+
+model KnowledgeSourceTopic {
+  sourceId String
+  topicId  String
+  source   KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  topic    Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  @@id([sourceId, topicId])
+}
+
+model KnowledgeSourceObjective {
+  sourceId            String
+  learningObjectiveId String
+  source               KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  learningObjective    LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+  @@id([sourceId, learningObjectiveId])
+}
