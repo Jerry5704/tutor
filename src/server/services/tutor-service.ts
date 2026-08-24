@@ -1,4 +1,5 @@
 import type { AIProvider, TutorTurn } from "@/server/ai/contracts";
+import { validateTutorAIResult } from "@/server/ai/output-validation";
 import { db } from "@/server/db/client";
 import { AssessmentService } from "@/server/services/assessment-service";
 import { CurriculumService } from "@/server/services/curriculum-service";
@@ -325,7 +326,7 @@ export class TutorService {
     const clarificationRequest = asksForClarification(content) || session.awaitingUnderstandingCheck;
     const forceExplanation = explicitlyRequestsHelp(content) || clarificationRequest;
     const knowledge = await this.knowledge.retrieveForObjective(objective.id, content);
-    const result = await this.ai.assessAndRespond({
+    const rawResult = await this.ai.assessAndRespond({
       phase: session.phase === "DIAGNOSTIC" ? "DIAGNOSTIC" : "LEARNING",
       objectiveCode: objective.code,
       objectiveDescription: objective.description,
@@ -343,6 +344,11 @@ export class TutorService {
       await db.studentAnswer.delete({ where: { id: answer.id } });
       throw error;
     });
+    const result = validateTutorAIResult(
+      rawResult,
+      objective.code,
+      knowledge.map((excerpt) => excerpt.locator),
+    );
     if (forceExplanation) {
       result.turn.assessment = "INCORRECT";
       result.turn.evidenceLevel = "NONE";

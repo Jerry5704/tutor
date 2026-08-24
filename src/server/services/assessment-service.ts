@@ -30,7 +30,11 @@ export class AssessmentService {
         latencyMs: result.latencyMs, inputTokens: result.inputTokens, outputTokens: result.outputTokens,
         knowledgeLocators: {
           retrieved: knowledge.map(({ sourceId, locator }) => ({ sourceId, locator })),
-          citedByModel: result.turn.sourceLocators ?? [],
+          citedByModel: result.validationAudit?.reportedSourceLocators ?? result.turn.sourceLocators,
+          acceptedCitations: result.turn.sourceLocators,
+          reportedLearningObjectives: result.validationAudit?.reportedLearningObjectives ?? result.turn.learningObjectives,
+          acceptedLearningObjectives: result.turn.learningObjectives,
+          validationIssues: result.validationAudit?.issues ?? [],
         },
         objectives: { create: objectiveIds.map((learningObjectiveId) => ({ learningObjectiveId })) },
         misconceptions: { create: misconceptions.map((item) => ({ misconceptionId: item.id })) },

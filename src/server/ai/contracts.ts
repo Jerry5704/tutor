@@ -46,6 +46,14 @@ export interface AIResult {
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
+  validationAudit?: {
+    reportedLearningObjectives: string[];
+    acceptedLearningObjectives: string[];
+    reportedSourceLocators: string[];
+    acceptedSourceLocators: string[];
+    rejectedSourceLocators: string[];
+    issues: string[];
+  };
 }
 
 export interface AIProvider extends ExplanationProvider, ConceptAIProvider {
