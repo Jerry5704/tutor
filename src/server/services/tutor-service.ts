@@ -6,6 +6,12 @@ import { KnowledgeService } from "@/server/services/knowledge-service";
 import { ConceptProgressService } from "@/server/services/concept-progress-service";
 import { requestsVisual, VisualAidService } from "@/server/services/visual-aid-service";
 import {
+  fingerprintsOverlap,
+  intentForNextAction,
+  questionFingerprint,
+  type QuestionIntent,
+} from "@/server/services/question-history";
+import {
   challengeFor,
   diagnosticMasteryDelta,
   demonstratesUnderstanding,
@@ -78,6 +84,19 @@ export class TutorService {
     }))?.mastery ?? 0;
   }
 
+  private async questionTrace(sessionId: string, learningObjectiveId: string, question: string) {
+    const fingerprint = questionFingerprint(learningObjectiveId, question);
+    const previous = await db.tutorMessage.findMany({
+      where: { sessionId, learningObjectiveId, questionFingerprint: { not: null } },
+      select: { questionFingerprint: true },
+    });
+    return {
+      fingerprint,
+      repeated: previous.some((message) => message.questionFingerprint
+        && fingerprintsOverlap(fingerprint, message.questionFingerprint)),
+    };
+  }
+
   async skipRemainingDiagnostic(studentId: string, sessionId: string, studentMessage?: string) {
     const session = await db.studySession.findFirstOrThrow({
       where: { id: sessionId, studentId, endedAt: null },
@@ -137,6 +156,9 @@ export class TutorService {
           sessionId,
           role: "TUTOR",
           content: `Spróbuj teraz samodzielnie, bez widocznego wyjaśnienia:\n\n${objective.practicePrompt}`,
+          learningObjectiveId: objective.id,
+          questionIntent: "PRACTICE",
+          questionFingerprint: questionFingerprint(objective.id, objective.practicePrompt),
         },
       }),
     ]);
@@ -197,6 +219,9 @@ export class TutorService {
       messages: { create: {
         role: "TUTOR",
         content: `Zanim zaczniemy naukę, sprawdźmy cały dział. Zaczynamy od zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — wtedy krótko to wyjaśnię.`,
+        learningObjectiveId: objective.id,
+        questionIntent: "DIAGNOSTIC",
+        questionFingerprint: questionFingerprint(objective.id, objective.diagnosticPrompt),
       } },
     } });
     await this.ensureObjectiveStates(session.id, objectives.map((item) => item.id), objective.id);
@@ -233,6 +258,9 @@ export class TutorService {
               sessionId,
               role: "TUTOR",
               content: `Dobrze. Sprawdźmy to teraz bez podpowiedzi:\n\n${objective.practicePrompt}`,
+              learningObjectiveId: objective.id,
+              questionIntent: "PRACTICE",
+              questionFingerprint: questionFingerprint(objective.id, objective.practicePrompt),
             },
           }),
         ]);
@@ -259,7 +287,14 @@ export class TutorService {
             data: { currentObjectiveId: nextObjective.id, awaitingUnderstandingCheck: false, scaffoldLevel: 0 },
           }),
           db.tutorMessage.create({
-            data: { sessionId, role: "TUTOR", content: `Dobrze. ${diagnosticQuestion(nextObjective)}` },
+            data: {
+              sessionId,
+              role: "TUTOR",
+              content: `Dobrze. ${diagnosticQuestion(nextObjective)}`,
+              learningObjectiveId: nextObjective.id,
+              questionIntent: "DIAGNOSTIC",
+              questionFingerprint: questionFingerprint(nextObjective.id, nextObjective.diagnosticPrompt),
+            },
           }),
         ]);
       } else {
@@ -345,6 +380,13 @@ export class TutorService {
     let phase = session.phase;
     let currentObjectiveId = objective.id;
     let tutorMessage = [result.turn.feedback, result.turn.nextQuestion].filter(Boolean).join("\n\n");
+    let messageObjectiveId = objective.id;
+    let questionIntent: QuestionIntent | undefined = result.turn.nextQuestion
+      ? intentForNextAction(result.turn.nextAction)
+      : undefined;
+    let messageQuestionFingerprint = result.turn.nextQuestion
+      ? questionFingerprint(objective.id, result.turn.nextQuestion)
+      : undefined;
     let visualObjectiveId: string | undefined;
     let showVisual = false;
     let endedAt: Date | undefined;
@@ -375,18 +417,27 @@ export class TutorService {
             data: { status: "DIAGNOSING" },
           });
           tutorMessage = `${result.turn.feedback}\n\nZapisuję ten fragment jako wymagający spokojnej nauki — wrócimy do niego w planie, zamiast powtarzać to samo.\n\n${diagnosticQuestion(nextObjective)}`;
+          messageObjectiveId = nextObjective.id;
+          questionIntent = "DIAGNOSTIC";
+          messageQuestionFingerprint = questionFingerprint(nextObjective.id, nextObjective.diagnosticPrompt);
           visualObjectiveId = undefined;
           showVisual = false;
         } else {
           tutorMessage = `${result.turn.feedback}\n\nZapisuję ten fragment do ponownej nauki. Sprawdźmy teraz jeden mały krok własnymi słowami:\n\n${objective.practicePrompt}`;
+          questionIntent = "PRACTICE";
+          messageQuestionFingerprint = questionFingerprint(objective.id, objective.practicePrompt);
         }
         await db.studySession.update({ where: { id: sessionId }, data: { awaitingUnderstandingCheck: false } });
       } else if (clarificationState.clarificationAttempts >= 2) {
         tutorMessage = `${result.turn.feedback}\n\nZamiast kolejny raz pytać, czy wszystko jest jasne, sprawdźmy jeden mały krok własnymi słowami:\n\n${objective.practicePrompt}`;
+        questionIntent = "PRACTICE";
+        messageQuestionFingerprint = questionFingerprint(objective.id, objective.practicePrompt);
         showVisual = false;
         await db.studySession.update({ where: { id: sessionId }, data: { awaitingUnderstandingCheck: false } });
       } else {
         tutorMessage = `${result.turn.feedback}\n\nW zagadnieniu „${objective.title}” wskaż fragment, który nadal jest niejasny. Jeśli wyjaśnienie wystarcza, napisz „dalej”.`;
+        questionIntent = "UNDERSTANDING_CHECK";
+        messageQuestionFingerprint = questionFingerprint(objective.id, `W zagadnieniu ${objective.title} wskaż fragment, który nadal jest niejasny.`);
         await db.studySession.update({ where: { id: sessionId }, data: { awaitingUnderstandingCheck: true } });
       }
     } else if (session.phase === "DIAGNOSTIC") {
@@ -401,6 +452,8 @@ export class TutorService {
 
       if (forceExplanation) {
         tutorMessage = `${result.turn.feedback}\n\nCzy wyjaśnienie zagadnienia „${objective.title}” wystarcza, czy konkretny fragment wymaga prostszego przykładu?`;
+        questionIntent = "UNDERSTANDING_CHECK";
+        messageQuestionFingerprint = questionFingerprint(objective.id, `Czy wyjaśnienie zagadnienia ${objective.title} wystarcza?`);
         visualObjectiveId = objective.id;
         showVisual = true;
         await db.studySession.update({ where: { id: sessionId }, data: { awaitingUnderstandingCheck: true } });
@@ -422,6 +475,9 @@ export class TutorService {
             data: { status: "DIAGNOSING" },
           });
           tutorMessage = `${result.turn.feedback}\n\n${diagnosticQuestion(nextObjective)}`;
+          messageObjectiveId = nextObjective.id;
+          questionIntent = "DIAGNOSTIC";
+          messageQuestionFingerprint = questionFingerprint(nextObjective.id, nextObjective.diagnosticPrompt);
         } else {
           phase = "LEARNING";
           const weakest = await this.weakestObjective(studentId, objectives);
@@ -432,6 +488,9 @@ export class TutorService {
             data: { status: "LEARNING", learningStep: "EXPLAIN", consecutiveStruggles: 0 },
           });
             tutorMessage = `${result.turn.feedback}\n\n${await this.planSummary(studentId, objectives)}\n\n${guidedLesson(weakest)}`;
+            messageObjectiveId = weakest.id;
+            questionIntent = undefined;
+            messageQuestionFingerprint = undefined;
             visualObjectiveId = weakest.id;
             showVisual = true;
             await db.sessionObjectiveState.update({
@@ -451,7 +510,13 @@ export class TutorService {
         },
       });
       if (understood && objectiveState.learningStep === "PRACTICE") {
-        tutorMessage = `${result.turn.feedback}\n\nDobrze — teraz sprawdźmy transfer do nowej sytuacji.\n\n${objective.transferPrompt}`;
+        const transferTrace = await this.questionTrace(sessionId, objective.id, objective.transferPrompt);
+        const transferQuestion = transferTrace.repeated
+          ? `Ułóż własny, nowy przykład sytuacji związanej z zagadnieniem „${objective.title}”. Przewidź wynik i uzasadnij go poznanym mechanizmem.`
+          : objective.transferPrompt;
+        tutorMessage = `${result.turn.feedback}\n\nDobrze — teraz sprawdźmy transfer do nowej sytuacji.\n\n${transferQuestion}`;
+        questionIntent = "TRANSFER";
+        messageQuestionFingerprint = questionFingerprint(objective.id, transferQuestion);
         await db.sessionObjectiveState.update({
           where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
           data: { learningStep: "TRANSFER", consecutiveStruggles: 0 },
@@ -469,6 +534,9 @@ export class TutorService {
             data: { status: "LEARNING", learningStep: "EXPLAIN", consecutiveStruggles: 0 },
           });
           tutorMessage = `${result.turn.feedback}\n\n${guidedLesson(next)}`;
+          messageObjectiveId = next.id;
+          questionIntent = undefined;
+          messageQuestionFingerprint = undefined;
           visualObjectiveId = next.id;
           showVisual = true;
           await db.sessionObjectiveState.update({
@@ -479,10 +547,14 @@ export class TutorService {
           phase = "COMPLETED";
           endedAt = new Date();
           tutorMessage = `${result.turn.feedback}\n\nNa dziś wszystkie cele tego działu mają potwierdzone opanowanie. Gotowość jest wskaźnikiem mastery, nie gwarancją oceny.`;
+          questionIntent = undefined;
+          messageQuestionFingerprint = undefined;
         }
       } else if (!understood && state.consecutiveStruggles >= 2) {
         if (state.workedExamplesShown === 0) {
           tutorMessage = `${result.turn.feedback}\n\nZmieńmy sposób.\n\n${guidedLesson(objective)}`;
+          questionIntent = undefined;
+          messageQuestionFingerprint = undefined;
           visualObjectiveId = objective.id;
           showVisual = true;
           await db.sessionObjectiveState.update({
@@ -494,6 +566,9 @@ export class TutorService {
           if (next) {
             currentObjectiveId = next.id;
             tutorMessage = `${result.turn.feedback}\n\n${guidedLesson(next)}`;
+            messageObjectiveId = next.id;
+            questionIntent = undefined;
+            messageQuestionFingerprint = undefined;
             visualObjectiveId = next.id;
             showVisual = true;
             await db.sessionObjectiveState.update({
@@ -519,7 +594,9 @@ export class TutorService {
         sessionId,
         role: "TUTOR",
         content: tutorMessage,
-        learningObjectiveId: visualObjectiveId,
+        learningObjectiveId: messageObjectiveId,
+        questionIntent,
+        questionFingerprint: messageQuestionFingerprint,
         knowledgeAssetId: visual.assetId,
         showVisual: visual.showVisual,
       } }),

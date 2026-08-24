@@ -63,6 +63,14 @@ enum LearningStep {
   TRANSFER
 }
 
+enum QuestionIntent {
+  DIAGNOSTIC
+  PRACTICE
+  CORRECTION
+  TRANSFER
+  UNDERSTANDING_CHECK
+}
+
 enum ConceptFamiliarity {
   UNKNOWN
   NOT_FAMILIAR
@@ -313,6 +321,8 @@ model TutorMessage {
   role      MessageRole
   content   String
   learningObjectiveId String?
+  questionIntent QuestionIntent?
+  questionFingerprint String?
   knowledgeAssetId String?
   showVisual Boolean @default(false)
   createdAt DateTime @default(now())
@@ -322,6 +332,7 @@ model TutorMessage {
   returningConceptSessions ConceptSession[] @relation("ConceptSessionReturnMessage")
 
   @@index([sessionId, createdAt])
+  @@index([sessionId, learningObjectiveId, questionIntent])
   @@index([knowledgeAssetId])
 }
 
