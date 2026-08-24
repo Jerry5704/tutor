@@ -347,7 +347,7 @@ export class TutorService {
       clarificationRequest,
       teacherScopeNote: session.teacherScopeNote?.content,
       knowledge,
-      recentMessages: session.messages.reverse().map(({ role, content: text }) => ({ role, content: text })),
+      recentMessages: session.messages.toReversed().map(({ role, content: text }) => ({ role, content: text })),
       answer: content,
       }).catch(async (error: unknown) => {
       await db.studentAnswer.delete({ where: { id: answer.id } });
@@ -372,9 +372,17 @@ export class TutorService {
     }
     const scaffoldLevel = nextScaffoldLevel(result.turn, session.scaffoldLevel, forceExplanation);
     await db.tutorMessage.create({ data: { sessionId, role: "STUDENT", content } });
-    const [updatedMastery] = await this.assessments.record(studentId, answer.id, [objective.id], result, delta, knowledge, !clarificationRequest);
+    const recordedAssessment = await this.assessments.record(studentId, answer.id, [objective.id], result, delta, knowledge, !clarificationRequest);
+    const [updatedMastery] = recordedAssessment.masteries;
     if (!clarificationRequest && result.turn.studentIntent === "ANSWER" && result.turn.evidenceLevel !== "NONE") {
-      await this.conceptProgress.recordObjectiveEvidence(studentId, objective.id, updatedMastery.mastery);
+      await this.conceptProgress.recordObjectiveEvidence({
+        studentId,
+        learningObjectiveId: objective.id,
+        assessmentId: recordedAssessment.assessmentId,
+        evidenceLevel: result.turn.evidenceLevel,
+        question: session.messages.find((message) => message.role === "TUTOR")?.content ?? "",
+        answer: content,
+      });
     }
 
     let phase = session.phase;

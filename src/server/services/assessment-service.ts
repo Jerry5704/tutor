@@ -23,7 +23,7 @@ export class AssessmentService {
       const misconceptions = await Promise.all(result.turn.misconceptions.map((code) => tx.misconception.upsert({
         where: { code }, create: { code, description: code.replaceAll("_", " ") }, update: {},
       })));
-      await tx.assessment.create({ data: {
+      const assessment = await tx.assessment.create({ data: {
         studentAnswerId: answerId, rating: result.turn.assessment, masteryDelta: delta,
         nextAction: result.turn.nextAction, rationale: result.turn.rationale,
         providerResponseId: result.responseId, model: result.model, promptVersion: PROMPT_VERSION,
@@ -35,7 +35,7 @@ export class AssessmentService {
         objectives: { create: objectiveIds.map((learningObjectiveId) => ({ learningObjectiveId })) },
         misconceptions: { create: misconceptions.map((item) => ({ misconceptionId: item.id })) },
       } });
-      return updated;
+      return { masteries: updated, assessmentId: assessment.id };
     });
   }
 }
