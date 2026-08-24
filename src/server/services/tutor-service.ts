@@ -6,6 +6,7 @@ import { KnowledgeService } from "@/server/services/knowledge-service";
 import { ConceptProgressService } from "@/server/services/concept-progress-service";
 import { createStudentAnswerOnce } from "@/server/services/student-answer-idempotency";
 import { resumePausedSessionData } from "@/server/services/session-lifecycle-policy";
+import { finishesDiagnosticProbe, learningTransition } from "@/server/services/learning-transition-policy";
 import { requestsVisual, VisualAidService } from "@/server/services/visual-aid-service";
 import {
   intentForNextAction,
@@ -442,10 +443,12 @@ export class TutorService {
         where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
         data: { diagnosticAttempts: { increment: 1 } },
       });
-      const finishProbe = demonstratesUnderstanding(result.turn)
-        || forceExplanation
-        || result.turn.studentIntent === "UNCERTAIN"
-        || state.diagnosticAttempts >= 2;
+      const finishProbe = finishesDiagnosticProbe({
+        understood: demonstratesUnderstanding(result.turn),
+        forceExplanation,
+        studentIntent: result.turn.studentIntent,
+        diagnosticAttempts: state.diagnosticAttempts,
+      });
 
       if (forceExplanation) {
         tutorMessage = `${result.turn.feedback}\n\nCzy wyjaśnienie zagadnienia „${objective.title}” wystarcza, czy konkretny fragment wymaga prostszego przykładu?`;
@@ -506,7 +509,14 @@ export class TutorService {
           consecutiveStruggles: understood ? 0 : { increment: 1 },
         },
       });
-      if (understood && objectiveState.learningStep === "PRACTICE") {
+      const transition = learningTransition({
+        understood,
+        learningStep: objectiveState.learningStep,
+        mastery: updatedMastery.mastery,
+        consecutiveStruggles: state.consecutiveStruggles,
+        workedExamplesShown: state.workedExamplesShown,
+      });
+      if (transition === "ASK_TRANSFER") {
         const [mainQuestions, conceptQuestions] = await Promise.all([
           db.tutorMessage.findMany({
             where: { sessionId, learningObjectiveId: objective.id, questionFingerprint: { not: null } },
@@ -536,7 +546,7 @@ export class TutorService {
           where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
           data: { learningStep: "TRANSFER", consecutiveStruggles: 0 },
         });
-      } else if (updatedMastery.mastery >= 0.78 && understood && objectiveState.learningStep === "TRANSFER") {
+      } else if (transition === "MASTER") {
         await db.sessionObjectiveState.update({
           where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
           data: { status: "MASTERED" },
@@ -565,8 +575,8 @@ export class TutorService {
           questionIntent = undefined;
           messageQuestionFingerprint = undefined;
         }
-      } else if (!understood && state.consecutiveStruggles >= 2) {
-        if (state.workedExamplesShown === 0) {
+      } else if (transition === "SHOW_WORKED_EXAMPLE" || transition === "ROTATE_OBJECTIVE") {
+        if (transition === "SHOW_WORKED_EXAMPLE") {
           tutorMessage = `${result.turn.feedback}\n\nZmieńmy sposób.\n\n${guidedLesson(objective)}`;
           questionIntent = undefined;
           messageQuestionFingerprint = undefined;
