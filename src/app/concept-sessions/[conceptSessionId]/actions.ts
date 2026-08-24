@@ -8,6 +8,27 @@ import { ConceptDiscoveryService } from "@/server/services/concept-discovery-ser
 import { OpenAIProvider } from "@/server/ai/openai-provider";
 import { db } from "@/server/db/client";
 import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
+import { SideChatService } from "@/server/services/side-chat-service";
+
+export async function submitSideQuestion(conceptSessionId: string, form: FormData) {
+  const student = await requireStudent();
+  const question = String(form.get("sideQuestion") ?? "").trim();
+  const submissionId = String(form.get("submissionId") ?? "").trim();
+  if (!question) return;
+  const conceptSession = await db.conceptSession.findFirstOrThrow({
+    where: { id: conceptSessionId, studentId: student.id },
+    include: { concept: { include: { objectives: { orderBy: { importance: "desc" }, take: 1 } } } },
+  });
+  await new SideChatService(new OpenAIProvider()).ask(
+    student.id,
+    conceptSession.parentStudySessionId,
+    question,
+    submissionId || undefined,
+    conceptSession.concept.objectives[0]?.learningObjectiveId,
+  );
+  revalidatePath(`/concept-sessions/${conceptSessionId}`);
+  revalidatePath(`/study/${conceptSession.parentStudySessionId}`);
+}
 
 export async function submitConceptAnswer(conceptSessionId: string, form: FormData) {
   const student = await requireStudent();

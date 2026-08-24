@@ -10,6 +10,16 @@ import { ConceptTutorService } from "@/server/services/concept-tutor-service";
 import { ConceptDiscoveryService } from "@/server/services/concept-discovery-service";
 import { uniqueConceptIds } from "@/server/services/session-lifecycle-policy";
 import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
+import { SideChatService } from "@/server/services/side-chat-service";
+
+export async function submitSideQuestion(sessionId: string, form: FormData) {
+  const student = await requireStudent();
+  const question = String(form.get("sideQuestion") ?? "").trim();
+  const submissionId = String(form.get("submissionId") ?? "").trim();
+  if (!question) return;
+  await new SideChatService(new OpenAIProvider()).ask(student.id, sessionId, question, submissionId || undefined);
+  revalidatePath(`/study/${sessionId}`);
+}
 
 export async function submitAnswer(sessionId: string, form: FormData) {
   const student = await requireStudent();

@@ -5,12 +5,13 @@ import { ConceptDiagram } from "@/components/concept-diagram";
 import { ConceptMap } from "@/components/concept-map";
 import { ConceptText } from "@/components/concept-text";
 import { ResetProgressForm } from "@/components/reset-progress-form";
+import { SideChat } from "@/components/side-chat";
 import { requireStudent } from "@/server/auth/session";
 import { db } from "@/server/db/client";
 import { annotateConceptText } from "@/server/services/concept-annotation";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
 import { sessionAcceptsInput } from "@/server/services/session-lifecycle-policy";
-import { beginPractice, pauseStudySession, resetUnitProgress, skipDiagnostic, submitAnswer } from "./actions";
+import { beginPractice, pauseStudySession, resetUnitProgress, skipDiagnostic, submitAnswer, submitSideQuestion } from "./actions";
 
 export default async function Study({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = await params;
@@ -24,6 +25,7 @@ export default async function Study({ params }: { params: Promise<{ sessionId: s
         orderBy: { createdAt: "asc" },
         include: { learningObjective: true, knowledgeAsset: true },
       },
+      sideChatMessages: { orderBy: { createdAt: "desc" }, take: 30, include: { linkedConcept: true } },
     },
   });
   if (!session) notFound();
@@ -78,5 +80,6 @@ export default async function Study({ params }: { params: Promise<{ sessionId: s
       <form action={pauseStudySession.bind(null, session.id)}><button type="submit" className="button secondary">Zakończ na dziś i zachowaj postęp</button></form>
       <details className="card"><summary>Opcje resetowania</summary><p className="muted">Reset usuwa bieżące mastery tego działu, ale zachowuje historię do audytu.</p><ResetProgressForm action={resetUnitProgress.bind(null, session.id)} /></details>
     </>}
+    {sessionAcceptsInput(session) && <SideChat sessionId={session.id} messages={session.sideChatMessages} concepts={concepts} action={submitSideQuestion.bind(null, session.id)} />}
   </main>;
 }

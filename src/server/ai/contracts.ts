@@ -57,8 +57,28 @@ export interface AIResult {
   };
 }
 
-export interface AIProvider extends ExplanationProvider, ConceptAIProvider {
+export interface AIProvider extends ExplanationProvider, ConceptAIProvider, SideChatAIProvider {
   assessAndRespond(context: TutorContext): Promise<AIResult>;
+}
+
+export const sideChatAnswerSchema = z.object({
+  answer: z.string().min(1).max(1800),
+  sourceLocators: z.array(z.string()),
+});
+
+export type SideChatAnswer = z.infer<typeof sideChatAnswerSchema>;
+
+export interface SideChatContext {
+  question: string;
+  objectiveTitle: string;
+  objectiveDescription: string;
+  objectiveGuidance: string;
+  knowledge: KnowledgeExcerpt[];
+  recentMessages: { role: "TUTOR" | "STUDENT"; content: string }[];
+}
+
+export interface SideChatAIProvider {
+  answerSideQuestion(context: SideChatContext): Promise<ConceptAIResult<SideChatAnswer>>;
 }
 
 export const quickExplanationSchema = z.object({

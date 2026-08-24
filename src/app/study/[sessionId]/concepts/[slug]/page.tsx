@@ -3,9 +3,10 @@ import { notFound } from "next/navigation";
 import { requireStudent } from "@/server/auth/session";
 import { db } from "@/server/db/client";
 import { ConceptText } from "@/components/concept-text";
+import { SideChat } from "@/components/side-chat";
 import { annotateConceptText, conceptTone } from "@/server/services/concept-annotation";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
-import { resetConceptKnowledge, startConceptSession } from "./actions";
+import { resetConceptKnowledge, startConceptSession, submitSideQuestion } from "./actions";
 
 export default async function ConceptPage({ params, searchParams }: { params: Promise<{ sessionId: string; slug: string }>; searchParams: Promise<{ reset?: string }> }) {
   const { sessionId, slug } = await params;
@@ -13,7 +14,10 @@ export default async function ConceptPage({ params, searchParams }: { params: Pr
   const student = await requireStudent();
   const session = await db.studySession.findFirst({
     where: { id: sessionId, studentId: student.id },
-    include: { unit: { include: { course: true } } },
+    include: {
+      unit: { include: { course: true } },
+      sideChatMessages: { orderBy: { createdAt: "desc" }, take: 30, include: { linkedConcept: true } },
+    },
   });
   if (!session) notFound();
   const concept = await db.concept.findFirst({
@@ -74,5 +78,11 @@ export default async function ConceptPage({ params, searchParams }: { params: Pr
         <button className="button danger" type="submit">Wyzeruj znajomość pojęcia</button>
       </form>}
     </section>
+    {session.endedAt === null && session.pausedAt === null && <SideChat
+      sessionId={session.id}
+      messages={session.sideChatMessages}
+      concepts={[concept, ...relatedConcepts]}
+      action={submitSideQuestion.bind(null, session.id, concept.slug)}
+    />}
   </main>;
 }

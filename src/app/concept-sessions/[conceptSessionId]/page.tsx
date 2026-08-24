@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnswerForm } from "@/components/answer-form";
 import { ConceptText } from "@/components/concept-text";
+import { SideChat } from "@/components/side-chat";
 import { requireStudent } from "@/server/auth/session";
 import { db } from "@/server/db/client";
 import { annotateConceptText } from "@/server/services/concept-annotation";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
-import { pauseConceptSession, submitConceptAnswer } from "./actions";
+import { pauseConceptSession, submitConceptAnswer, submitSideQuestion } from "./actions";
 
 function masteryLabel(mastery: number) {
   if (mastery >= 0.85) return "Bardzo dobre opanowanie";
@@ -21,8 +22,8 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
   const session = await db.conceptSession.findFirst({
     where: { id: conceptSessionId, studentId: student.id },
     include: {
-      concept: { include: { studentStates: { where: { studentId: student.id } } } },
-      parentStudySession: { include: { unit: { include: { course: true } } } },
+      concept: { include: { aliases: true, studentStates: { where: { studentId: student.id } } } },
+      parentStudySession: { include: { unit: { include: { course: true } }, sideChatMessages: { orderBy: { createdAt: "desc" }, take: 30, include: { linkedConcept: true } } } },
       messages: { orderBy: { createdAt: "asc" } },
     },
   });
@@ -73,5 +74,11 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
       <AnswerForm action={submitConceptAnswer.bind(null, session.id)} />
       <form action={pauseConceptSession.bind(null, session.id)}><button className="button secondary" type="submit">Odłóż na później i wróć</button></form>
     </>}
+    {session.parentStudySession.endedAt === null && session.parentStudySession.pausedAt === null && <SideChat
+      sessionId={session.parentStudySessionId}
+      messages={session.parentStudySession.sideChatMessages}
+      concepts={[session.concept, ...relatedConcepts]}
+      action={submitSideQuestion.bind(null, session.id)}
+    />}
   </main>;
 }

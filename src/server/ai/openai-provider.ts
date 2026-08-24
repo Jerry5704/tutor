@@ -1,12 +1,13 @@
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
-import type { AIProvider, ConceptGenerationContext, ConceptTutorContext, QuickExplanationContext, TutorContext } from "@/server/ai/contracts";
-import { conceptTurnSchema, generatedConceptSchema, quickExplanationSchema, tutorTurnSchema } from "@/server/ai/contracts";
+import type { AIProvider, ConceptGenerationContext, ConceptTutorContext, QuickExplanationContext, SideChatContext, TutorContext } from "@/server/ai/contracts";
+import { conceptTurnSchema, generatedConceptSchema, quickExplanationSchema, sideChatAnswerSchema, tutorTurnSchema } from "@/server/ai/contracts";
 import { quickExplanationInstructions } from "@/server/prompts/quick-explanation";
 import { tutorInstructions } from "@/server/prompts/tutor";
 import { conceptTutorInstructions } from "@/server/prompts/concept-tutor";
 import { conceptGenerationInstructions } from "@/server/prompts/concept-generation";
 import { openAIConfig } from "@/server/config/env";
+import { sideChatInstructions } from "@/server/prompts/side-chat";
 
 export function tutorRequestInput(context: TutorContext) {
   return {
@@ -97,6 +98,29 @@ export class OpenAIProvider implements AIProvider {
       text: { format: zodTextFormat(generatedConceptSchema, "generated_concept") },
     });
     if (!response.output_parsed) throw new Error("OpenAI returned no generated concept");
+    return {
+      value: response.output_parsed,
+      responseId: response.id,
+      model: this.model,
+      latencyMs: Date.now() - started,
+      inputTokens: response.usage?.input_tokens,
+      outputTokens: response.usage?.output_tokens,
+    };
+  }
+
+  async answerSideQuestion(context: SideChatContext) {
+    const started = Date.now();
+    const response = await this.client.responses.parse({
+      model: this.model,
+      instructions: sideChatInstructions(context),
+      input: JSON.stringify({
+        question: context.question,
+        recentConversation: context.recentMessages,
+        approvedKnowledge: context.knowledge,
+      }),
+      text: { format: zodTextFormat(sideChatAnswerSchema, "side_chat_answer") },
+    });
+    if (!response.output_parsed) throw new Error("OpenAI returned no structured side-chat answer");
     return {
       value: response.output_parsed,
       responseId: response.id,

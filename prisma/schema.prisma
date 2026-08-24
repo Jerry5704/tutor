@@ -223,6 +223,7 @@ model LearningObjective {
   concepts             ConceptObjective[]
   conceptEvidence      ConceptEvidence[]
   conceptAssessments   ConceptAssessment[]
+  sideChatMessages     SideChatMessage[]
 
   @@unique([topicId, order])
 }
@@ -300,6 +301,7 @@ model StudySession {
   teacherScopeNote   TeacherScopeNote?
   objectiveStates    SessionObjectiveState[]
   conceptSessions    ConceptSession[]
+  sideChatMessages   SideChatMessage[]
 
   @@index([studentId, unitId, endedAt])
 }
@@ -349,6 +351,30 @@ model TutorMessage {
   @@index([sessionId, createdAt])
   @@index([sessionId, learningObjectiveId, questionIntent])
   @@index([knowledgeAssetId])
+}
+
+model SideChatMessage {
+  id                  String @id @default(cuid())
+  studySessionId      String
+  submissionId        String? @unique
+  role                MessageRole
+  content             String
+  learningObjectiveId String?
+  linkedConceptId     String?
+  sourceLocators      Json?
+  providerResponseId  String?
+  model               String?
+  promptVersion       String?
+  latencyMs           Int?
+  inputTokens         Int?
+  outputTokens        Int?
+  createdAt           DateTime @default(now())
+  studySession        StudySession @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
+  learningObjective   LearningObjective? @relation(fields: [learningObjectiveId], references: [id], onDelete: SetNull)
+  linkedConcept       Concept? @relation(fields: [linkedConceptId], references: [id], onDelete: SetNull)
+
+  @@index([studySessionId, createdAt])
+  @@index([linkedConceptId])
 }
 
 model StudentAnswer {
@@ -511,6 +537,7 @@ model Concept {
   sessions              ConceptSession[]
   outgoingRelations     ConceptRelation[] @relation("ConceptRelationSource")
   incomingRelations     ConceptRelation[] @relation("ConceptRelationTarget")
+  sideChatMessages      SideChatMessage[]
 
   @@unique([curriculumVersionId, slug])
   @@index([curriculumVersionId, active])
