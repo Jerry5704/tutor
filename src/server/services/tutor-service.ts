@@ -6,6 +6,7 @@ import { CurriculumService } from "@/server/services/curriculum-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { ConceptProgressService } from "@/server/services/concept-progress-service";
 import { StudentModelService } from "@/server/services/student-model-service";
+import { logError, logInfo } from "@/server/observability/logger";
 import { createStudentAnswerOnce } from "@/server/services/student-answer-idempotency";
 import { resumePausedSessionData } from "@/server/services/session-lifecycle-policy";
 import { finishesDiagnosticProbe, learningTransition } from "@/server/services/learning-transition-policy";
@@ -329,8 +330,14 @@ export class TutorService {
       knowledge,
       recentMessages: session.messages.toReversed().map(({ role, content: text }) => ({ role, content: text })),
       answer: content,
-      }).catch(async (error: unknown) => {
+    }).catch(async (error: unknown) => {
       await db.studentAnswer.delete({ where: { id: answer.id } });
+      logError("tutor_ai_failed", error, {
+        studentId,
+        sessionId,
+        objectiveCode: objective.code,
+        phase: session.phase,
+      });
       throw error;
     });
     const result = validateTutorAIResult(
@@ -358,6 +365,22 @@ export class TutorService {
     const scaffoldLevel = nextScaffoldLevel(result.turn, session.scaffoldLevel, forceExplanation);
     await db.tutorMessage.create({ data: { sessionId, role: "STUDENT", content } });
     const recordedAssessment = await this.assessments.record(studentId, answer.id, [objective.id], result, delta, knowledge, !clarificationRequest);
+    logInfo("tutor_assessment_recorded", {
+      studentId,
+      sessionId,
+      assessmentId: recordedAssessment.assessmentId,
+      objectiveCode: objective.code,
+      phase: session.phase,
+      rating: result.turn.assessment,
+      evidenceLevel: result.turn.evidenceLevel,
+      appliedMasteryDelta: clarificationRequest ? 0 : delta,
+      model: result.model,
+      providerResponseId: result.responseId,
+      latencyMs: result.latencyMs,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      validationIssueCount: result.validationAudit?.issues.length ?? 0,
+    });
     const [updatedMastery] = recordedAssessment.masteries;
     if (!clarificationRequest && result.turn.studentIntent === "ANSWER" && result.turn.evidenceLevel !== "NONE") {
       await this.conceptProgress.recordObjectiveEvidence({

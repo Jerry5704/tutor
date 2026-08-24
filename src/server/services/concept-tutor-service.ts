@@ -6,6 +6,7 @@ import { confirmsUnderstanding, explicitlyRequestsHelp } from "@/server/services
 import { aggregateConceptMastery } from "@/server/services/concept-evidence-policy";
 import { questionFingerprint } from "@/server/services/question-history";
 import { CONCEPT_TUTOR_PROMPT_VERSION } from "@/server/prompts/concept-tutor";
+import { logError, logInfo } from "@/server/observability/logger";
 
 
 function targetMastery(assessment: ConceptTurn["assessment"], evidence: ConceptTurn["evidenceLevel"]) {
@@ -145,6 +146,15 @@ export class ConceptTutorService {
       recentMessages: session.messages.toReversed().map((message) => ({ role: message.role, content: message.content })),
       answer,
       helpRequested: help,
+    }).catch((error: unknown) => {
+      logError("concept_tutor_ai_failed", error, {
+        studentId,
+        conceptSessionId,
+        conceptId: session.conceptId,
+        learningObjectiveId: objectiveId,
+        phase: session.phase,
+      });
+      throw error;
     });
     const turn = aiResult.value;
     const target = help ? (state?.mastery ?? 0) : targetMastery(turn.assessment, turn.evidenceLevel);
@@ -254,6 +264,22 @@ export class ConceptTutorService {
           endedAt: completed ? new Date() : null,
         },
       });
+    });
+    logInfo("concept_assessment_recorded", {
+      studentId,
+      conceptSessionId,
+      conceptId: session.conceptId,
+      learningObjectiveId: objectiveId,
+      phase: session.phase,
+      rating: help ? "INCORRECT" : turn.assessment,
+      evidenceLevel: help ? "NONE" : turn.evidenceLevel,
+      masteryDelta: delta,
+      completed,
+      model: aiResult.model,
+      providerResponseId: aiResult.responseId,
+      latencyMs: aiResult.latencyMs,
+      inputTokens: aiResult.inputTokens,
+      outputTokens: aiResult.outputTokens,
     });
     return { completed, parentStudySessionId: session.parentStudySessionId, returnToMessageId: session.returnToMessageId, parentConceptSessionId: session.parentConceptSessionId };
   }

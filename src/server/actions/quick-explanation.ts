@@ -4,6 +4,7 @@ import { z } from "zod";
 import { OpenAIProvider } from "@/server/ai/openai-provider";
 import { requireStudent } from "@/server/auth/session";
 import { QuickExplanationService } from "@/server/services/quick-explanation-service";
+import { logError } from "@/server/observability/logger";
 
 const requestSchema = z.object({
   sourceKind: z.enum(["STUDY_MESSAGE", "CONCEPT_MESSAGE", "CONCEPT_CARD"]),
@@ -34,10 +35,10 @@ export async function explainSentence(
     );
     return { explanation: result.explanation };
   } catch (error) {
-    console.error("quick_explanation_failed", {
+    logError("quick_explanation_failed", error, {
+      studentId: student.id,
       sourceKind: parsed.data.sourceKind,
       sourceId: parsed.data.sourceId,
-      error: error instanceof Error ? error.message : "unknown_error",
     });
     return { error: "Nie udało się przygotować wyjaśnienia. Spróbuj ponownie." };
   }
