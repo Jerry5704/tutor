@@ -5,6 +5,7 @@ import { AssessmentService } from "@/server/services/assessment-service";
 import { CurriculumService } from "@/server/services/curriculum-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { ConceptProgressService } from "@/server/services/concept-progress-service";
+import { StudentModelService } from "@/server/services/student-model-service";
 import { createStudentAnswerOnce } from "@/server/services/student-answer-idempotency";
 import { resumePausedSessionData } from "@/server/services/session-lifecycle-policy";
 import { finishesDiagnosticProbe, learningTransition } from "@/server/services/learning-transition-policy";
@@ -65,6 +66,7 @@ export class TutorService {
   constructor(
     private readonly ai: AIProvider,
     private readonly curriculum = new CurriculumService(),
+    private readonly studentModel = new StudentModelService(),
     private readonly assessments = new AssessmentService(),
     private readonly knowledge = new KnowledgeService(),
     private readonly visuals = new VisualAidService(),
@@ -84,12 +86,6 @@ export class TutorService {
       })),
       skipDuplicates: true,
     });
-  }
-
-  private async masteryFor(studentId: string, objectiveId: string) {
-    return (await db.studentMastery.findUnique({
-      where: { studentId_learningObjectiveId: { studentId, learningObjectiveId: objectiveId } },
-    }))?.mastery ?? 0;
   }
 
   async skipRemainingDiagnostic(studentId: string, sessionId: string, studentMessage?: string) {
@@ -160,13 +156,7 @@ export class TutorService {
   }
 
   private async weakestObjective(studentId: string, objectives: Objective[], excludedId?: string) {
-    const rows = await db.studentMastery.findMany({
-      where: { studentId, learningObjectiveId: { in: objectives.map((item) => item.id) } },
-    });
-    const mastery = new Map(rows.map((row) => [row.learningObjectiveId, row.mastery]));
-    return objectives
-      .filter((item) => item.id !== excludedId)
-      .sort((a, b) => ((mastery.get(a.id) ?? 0) - (mastery.get(b.id) ?? 0)) || (b.importance - a.importance))[0];
+    return this.studentModel.weakestObjective(studentId, objectives, excludedId);
   }
 
   private async weakestUnmasteredObjective(studentId: string, sessionId: string, objectives: Objective[], excludedId?: string) {
@@ -179,13 +169,7 @@ export class TutorService {
   }
 
   private async planSummary(studentId: string, objectives: Objective[]) {
-    const rows = await db.studentMastery.findMany({
-      where: { studentId, learningObjectiveId: { in: objectives.map((item) => item.id) } },
-    });
-    const mastery = new Map(rows.map((row) => [row.learningObjectiveId, row.mastery]));
-    const strong = objectives.filter((item) => (mastery.get(item.id) ?? 0) >= 0.6);
-    const developing = objectives.filter((item) => (mastery.get(item.id) ?? 0) >= 0.25 && (mastery.get(item.id) ?? 0) < 0.6);
-    const gaps = objectives.filter((item) => (mastery.get(item.id) ?? 0) < 0.25);
+    const { strong, developing, gaps } = await this.studentModel.masteryGroups(studentId, objectives);
     return [
       "Diagnostyka zakończona. To wstępny obraz oparty na odpowiedziach z tej sesji.",
       strong.length ? `Mocne odpowiedzi diagnostyczne — sprawdzimy jeszcze transfer:\n${strong.map((item) => `✓ ${item.title}`).join("\n")}` : "Na razie nie mamy jeszcze potwierdzonych mocnych obszarów.",
@@ -326,7 +310,7 @@ export class TutorService {
     }, { sessionId, content, submissionId });
     if (!answer) return null;
 
-    const currentMastery = await this.masteryFor(studentId, objective.id);
+    const currentMastery = await this.studentModel.mastery(studentId, objective.id);
     const clarificationRequest = asksForClarification(content) || session.awaitingUnderstandingCheck;
     const forceExplanation = explicitlyRequestsHelp(content) || clarificationRequest;
     const knowledge = await this.knowledge.retrieveForObjective(objective.id, content);
