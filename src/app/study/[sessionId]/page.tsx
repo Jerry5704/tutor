@@ -9,6 +9,7 @@ import { requireStudent } from "@/server/auth/session";
 import { db } from "@/server/db/client";
 import { annotateConceptText } from "@/server/services/concept-annotation";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
+import { sessionAcceptsInput } from "@/server/services/session-lifecycle-policy";
 import { beginPractice, pauseStudySession, resetUnitProgress, skipDiagnostic, submitAnswer } from "./actions";
 
 export default async function Study({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -69,7 +70,7 @@ export default async function Study({ params }: { params: Promise<{ sessionId: s
     <section className={`chat ${focusQuestion ? "concept-current" : ""}`} aria-live="polite">
       {(focusQuestion ? latestMessage ? [latestMessage] : [] : earlierMessages).map(renderMessage)}
     </section>
-    {!session.endedAt && !session.pausedAt && <>
+    {sessionAcceptsInput(session) && <>
       {awaitingPractice
         ? <form action={beginPractice.bind(null, session.id)}><button type="submit" className="button">Rozumiem — sprawdź mnie bez podpowiedzi</button></form>
         : <AnswerForm action={submitAnswer.bind(null, session.id)} />}

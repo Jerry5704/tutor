@@ -4,6 +4,8 @@ import { AssessmentService } from "@/server/services/assessment-service";
 import { CurriculumService } from "@/server/services/curriculum-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { ConceptProgressService } from "@/server/services/concept-progress-service";
+import { createStudentAnswerOnce } from "@/server/services/student-answer-idempotency";
+import { resumePausedSessionData } from "@/server/services/session-lifecycle-policy";
 import { requestsVisual, VisualAidService } from "@/server/services/visual-aid-service";
 import {
   intentForNextAction,
@@ -192,8 +194,9 @@ export class TutorService {
       orderBy: { updatedAt: "desc" },
     });
     if (existing) {
-      if (!existing.pausedAt) return existing;
-      return db.studySession.update({ where: { id: existing.id }, data: { pausedAt: null } });
+      const resumeData = resumePausedSessionData(existing);
+      if (!resumeData) return existing;
+      return db.studySession.update({ where: { id: existing.id }, data: resumeData });
     }
 
     const unit = await this.curriculum.getUnitForStudent(unitId, studentId);
@@ -311,14 +314,10 @@ export class TutorService {
       return null;
     }
 
-    if (submissionId) {
-      const duplicate = await db.studentAnswer.findUnique({ where: { submissionId } });
-      if (duplicate) return null;
-    }
-    const answer = await db.studentAnswer.create({ data: { sessionId, content, submissionId } }).catch(async (error: unknown) => {
-      if (submissionId && await db.studentAnswer.findUnique({ where: { submissionId } })) return null;
-      throw error;
-    });
+    const answer = await createStudentAnswerOnce({
+      findBySubmissionId: (id) => db.studentAnswer.findUnique({ where: { submissionId: id } }),
+      create: (data) => db.studentAnswer.create({ data }),
+    }, { sessionId, content, submissionId });
     if (!answer) return null;
 
     const currentMastery = await this.masteryFor(studentId, objective.id);

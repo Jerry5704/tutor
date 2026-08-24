@@ -8,6 +8,7 @@ import { db } from "@/server/db/client";
 import { ConceptIntentService } from "@/server/services/concept-intent-service";
 import { ConceptTutorService } from "@/server/services/concept-tutor-service";
 import { ConceptDiscoveryService } from "@/server/services/concept-discovery-service";
+import { uniqueConceptIds } from "@/server/services/session-lifecycle-policy";
 
 export async function submitAnswer(sessionId: string, form: FormData) {
   const student = await requireStudent();
@@ -67,7 +68,7 @@ export async function resetUnitProgress(sessionId: string) {
     where: { learningObjectiveId: { in: objectiveIds } },
     select: { conceptId: true },
   });
-  const conceptIds = [...new Set(conceptLinks.map((link) => link.conceptId))];
+  const conceptIds = uniqueConceptIds(conceptLinks);
   await db.$transaction([
     db.studySession.update({ where: { id: previous.id }, data: { phase: "COMPLETED", pausedAt: null, endedAt: new Date() } }),
     db.studentMastery.updateMany({
