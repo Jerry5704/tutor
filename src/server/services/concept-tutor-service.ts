@@ -108,7 +108,7 @@ export class ConceptTutorService {
         concept: {
           include: {
             sources: { include: { knowledgeChunk: true } },
-            objectives: { select: { learningObjectiveId: true }, orderBy: { importance: "desc" }, take: 1 },
+            objectives: { select: { learningObjectiveId: true, importance: true }, orderBy: { importance: "desc" }, take: 1 },
           },
         },
         messages: { orderBy: { createdAt: "desc" }, take: 8 },
@@ -170,6 +170,33 @@ Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
     const nextMastery = Math.max(previousMastery, target);
     const delta = Math.round((nextMastery - previousMastery) * 1000) / 1000;
     const completed = !help && nextMastery >= 0.75 && (turn.evidenceLevel === "MECHANISM" || turn.evidenceLevel === "TRANSFER");
+    let objectiveMasteryBefore: number | undefined;
+    let objectiveMasteryAfter: number | undefined;
+    let objectiveConfidenceAfter: number | undefined;
+    if (completed && objectiveId) {
+      const [links, conceptStates, objectiveMastery] = await Promise.all([
+        db.conceptObjective.findMany({
+          where: { learningObjectiveId: objectiveId },
+          select: { conceptId: true, importance: true },
+        }),
+        db.studentConceptState.findMany({
+          where: { studentId, concept: { objectives: { some: { learningObjectiveId: objectiveId } } } },
+          select: { conceptId: true, mastery: true },
+        }),
+        db.studentMastery.findUnique({
+          where: { studentId_learningObjectiveId: { studentId, learningObjectiveId: objectiveId } },
+        }),
+      ]);
+      const masteryByConcept = new Map(conceptStates.map((item) => [item.conceptId, item.mastery]));
+      masteryByConcept.set(session.conceptId, nextMastery);
+      const totalWeight = links.reduce((sum, link) => sum + link.importance, 0);
+      const conceptAggregate = totalWeight > 0
+        ? links.reduce((sum, link) => sum + (masteryByConcept.get(link.conceptId) ?? 0) * link.importance, 0) / totalWeight
+        : 0;
+      objectiveMasteryBefore = objectiveMastery?.mastery ?? 0;
+      objectiveMasteryAfter = Math.max(objectiveMasteryBefore, Math.round(conceptAggregate * 1000) / 1000);
+      objectiveConfidenceAfter = Math.min(1, (objectiveMastery?.confidence ?? 0) + 0.05);
+    }
     const helpContent = `${turn.directAnswer.trim() || turn.feedback}\n\nCzy ta konkretna odpowiedź jest jasna? Jeśli tak, napisz „dalej”. Jeśli nie, wskaż słowo lub fragment, który mam rozwinąć.`;
     const correctionContent = `${turn.feedback}\n\n${session.concept.concreteExample ? `Spójrz jeszcze raz na przykład:\n${session.concept.concreteExample}\n\n` : ""}Nie przechodzimy od razu do następnego pytania. Jeśli poprawka jest jasna, napisz „dalej”; wtedy dostaniesz nowe zadanie bez widocznej podpowiedzi.`;
     const tutorContent = completed
@@ -184,8 +211,11 @@ Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
       const studentMessage = await tx.conceptMessage.create({ data: { conceptSessionId, role: "STUDENT", content: answer, submissionId } });
       await tx.conceptAssessment.create({ data: {
         conceptMessageId: studentMessage.id,
+        learningObjectiveId: completed ? objectiveId : undefined,
         rating: help ? "INCORRECT" : turn.assessment,
         masteryDelta: delta,
+        objectiveMasteryBefore,
+        objectiveMasteryAfter,
         rationale: turn.rationale,
         providerResponseId: response.id,
         model: this.model,
@@ -206,6 +236,25 @@ Nie odchodź do innych tematów i nie twórz niepotwierdzonych faktów.`,
         },
         create: { studentId, conceptId: session.conceptId, mastery: nextMastery, confidence: help ? 0 : 0.2, attempts: 1, evidenceCount: help ? 0 : 1, lastPracticedAt: new Date() },
       });
+      if (completed && objectiveId && objectiveMasteryAfter !== undefined) {
+        await tx.studentMastery.upsert({
+          where: { studentId_learningObjectiveId: { studentId, learningObjectiveId: objectiveId } },
+          create: {
+            studentId,
+            learningObjectiveId: objectiveId,
+            mastery: objectiveMasteryAfter,
+            confidence: 0.2,
+            attempts: 1,
+            lastPracticedAt: new Date(),
+          },
+          update: {
+            mastery: objectiveMasteryAfter,
+            confidence: objectiveConfidenceAfter,
+            attempts: { increment: 1 },
+            lastPracticedAt: new Date(),
+          },
+        });
+      }
       await tx.conceptSession.update({
         where: { id: conceptSessionId },
         data: {

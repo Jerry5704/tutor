@@ -211,6 +211,7 @@ model LearningObjective {
   visualAssets         KnowledgeAsset[]
   concepts             ConceptObjective[]
   conceptEvidence      ConceptEvidence[]
+  conceptAssessments   ConceptAssessment[]
 
   @@unique([topicId, order])
 }
@@ -620,8 +621,11 @@ model ConceptMessage {
 model ConceptAssessment {
   id                 String @id @default(cuid())
   conceptMessageId   String @unique
+  learningObjectiveId String?
   rating             AssessmentRating
   masteryDelta       Float
+  objectiveMasteryBefore Float?
+  objectiveMasteryAfter  Float?
   rationale          String
   providerResponseId String?
   model              String
@@ -631,6 +635,9 @@ model ConceptAssessment {
   knowledgeLocators  Json?
   createdAt          DateTime @default(now())
   message            ConceptMessage @relation(fields: [conceptMessageId], references: [id], onDelete: Cascade)
+  learningObjective  LearningObjective? @relation(fields: [learningObjectiveId], references: [id], onDelete: SetNull)
+
+  @@index([learningObjectiveId])
 }
 
 model KnowledgeSourceCurriculum {
