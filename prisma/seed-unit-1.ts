@@ -193,9 +193,129 @@ const topics: TopicSeed[] = [
   },
 ];
 
-const visualFor = (objective: ObjectiveSeed) => ({
-  ...(objective.code === "mol_nucleotide_structure"
-    ? {
+const sequenceVisuals: Record<string, { caption: string; steps: Array<{ label: string; detail: string }> }> = {
+  mol_dna_structure_complementarity: {
+    caption: "Co utrzymuje razem dwie nici DNA?",
+    steps: [
+      { label: "Dwie przeciwne nici", detail: "jedna biegnie 5′→3′, druga 3′→5′" },
+      { label: "Pary zasad", detail: "A łączy się z T, a G z C" },
+      { label: "Wiązania wodorowe", detail: "A–T tworzy 2, a G–C 3 takie wiązania" },
+      { label: "Ogrzewanie", detail: "dostarcza energii potrzebnej do rozdzielenia nici" },
+    ],
+  },
+  mol_dna_rna_comparison: {
+    caption: "Od informacji w DNA do wykorzystania jej przez RNA",
+    steps: [
+      { label: "DNA", detail: "przechowuje sekwencję informacji genetycznej" },
+      { label: "mRNA", detail: "przenosi kopię informacji do rybosomu" },
+      { label: "rRNA", detail: "współtworzy rybosom" },
+      { label: "tRNA", detail: "dostarcza aminokwas zgodny z kodonem mRNA" },
+    ],
+  },
+  mol_replication_enzymes: {
+    caption: "Współpraca enzymów podczas replikacji DNA",
+    steps: [
+      { label: "Helikaza", detail: "rozdziela dwie nici DNA" },
+      { label: "Prymaza", detail: "tworzy krótki starter z wolnym końcem 3′" },
+      { label: "Polimeraza DNA", detail: "dołącza nukleotydy do końca 3′ nowej nici" },
+      { label: "Ligaza", detail: "łączy sąsiednie fragmenty nowej nici" },
+    ],
+  },
+  mol_leading_lagging_strands: {
+    caption: "Dlaczego jedna nić powstaje ciągle, a druga fragmentami?",
+    steps: [
+      { label: "Matryce są antyrównoległe", detail: "przy widełkach biegną w przeciwnych kierunkach" },
+      { label: "Jedna reguła polimerazy", detail: "nowa nić zawsze rośnie 5′→3′" },
+      { label: "Nić wiodąca", detail: "może rosnąć ciągle w kierunku ruchu widełek" },
+      { label: "Nić opóźniona", detail: "powstaje odcinkami — fragmentami Okazaki" },
+      { label: "Ligaza", detail: "scala fragmenty Okazaki w jedną nić" },
+    ],
+  },
+  mol_gene_structure: {
+    caption: "Od genu nieciągłego do dojrzałego mRNA",
+    steps: [
+      { label: "Część regulatorowa", detail: "wpływa na rozpoczęcie i intensywność transkrypcji" },
+      { label: "Eksony i introny", detail: "obie sekwencje trafiają do pierwotnego transkryptu" },
+      { label: "Splicing", detail: "introny są usuwane, a eksony łączone" },
+      { label: "Dojrzałe mRNA", detail: "jest krótsze od pierwotnego transkryptu" },
+    ],
+  },
+  mol_genome_organization: {
+    caption: "Gen, chromosom i genom — relacja skali",
+    steps: [
+      { label: "Gen", detail: "funkcjonalny odcinek DNA" },
+      { label: "Chromosom", detail: "długa cząsteczka DNA zawierająca wiele genów" },
+      { label: "Genom", detail: "całość informacji genetycznej organizmu" },
+    ],
+  },
+  mol_genetic_code: {
+    caption: "Jak odczytywana jest sekwencja mRNA?",
+    steps: [
+      { label: "Kierunek 5′→3′", detail: "rybosom przesuwa się wzdłuż mRNA" },
+      { label: "Kodon", detail: "kolejne trzy nukleotydy tworzą jedną jednostkę odczytu" },
+      { label: "Znaczenie kodonu", detail: "wskazuje aminokwas albo sygnał STOP" },
+      { label: "Łańcuch", detail: "aminokwasy są dołączane w kolejności kodonów" },
+    ],
+  },
+  mol_transcription: {
+    caption: "Przepisanie informacji z DNA na RNA",
+    steps: [
+      { label: "Nić matrycowa DNA", detail: "polimeraza RNA odczytuje ją 3′→5′" },
+      { label: "Dobór nukleotydów", detail: "powstający RNA jest komplementarny do matrycy" },
+      { label: "Wzrost RNA", detail: "nowa cząsteczka jest syntetyzowana 5′→3′" },
+      { label: "Relacja do nici kodującej", detail: "ta sama sekwencja z U zamiast T" },
+    ],
+  },
+  mol_rna_processing: {
+    caption: "Obróbka pierwotnego transkryptu RNA",
+    steps: [
+      { label: "pre-mRNA", detail: "zawiera eksony i introny" },
+      { label: "Wycięcie intronów", detail: "sekwencje intronowe są usuwane" },
+      { label: "Połączenie eksonów", detail: "eksony tworzą ciągłą sekwencję" },
+      { label: "Dojrzałe mRNA", detail: "może zostać wykorzystane podczas translacji" },
+    ],
+  },
+  mol_translation: {
+    caption: "Współpraca mRNA, tRNA i rybosomu",
+    steps: [
+      { label: "Kodon mRNA", detail: "rybosom odczytuje kolejną trójkę nukleotydów" },
+      { label: "Antykodon tRNA", detail: "wiąże się komplementarnie z kodonem" },
+      { label: "Aminokwas", detail: "tRNA dostarcza właściwy aminokwas" },
+      { label: "Wiązanie peptydowe", detail: "rybosom dołącza aminokwas do polipeptydu" },
+    ],
+  },
+  mol_prokaryotic_regulation: {
+    caption: "Jak represor steruje transkrypcją operonu?",
+    steps: [
+      { label: "Represor na operatorze", detail: "blokuje przejście polimerazy RNA" },
+      { label: "Sygnał środowiskowy", detail: "zmienia zdolność represora do wiązania operatora" },
+      { label: "Operator dostępny", detail: "polimeraza może transkrybować geny struktury" },
+      { label: "Wspólne mRNA", detail: "produkty genów pomagają odpowiedzieć na warunki środowiska" },
+    ],
+  },
+  mol_eukaryotic_regulation: {
+    caption: "Miejsca regulacji od DNA do aktywnego białka",
+    steps: [
+      { label: "Dostępność DNA", detail: "stopień kondensacji chromatyny" },
+      { label: "Transkrypcja", detail: "częstość powstawania RNA" },
+      { label: "RNA", detail: "obróbka, transport i trwałość mRNA" },
+      { label: "Translacja", detail: "częstość syntezy polipeptydu" },
+      { label: "Białko", detail: "aktywacja, modyfikacje i rozkład" },
+    ],
+  },
+  mol_cell_differentiation: {
+    caption: "Ten sam genom, różne funkcje komórek",
+    steps: [
+      { label: "Ten sam zestaw genów", detail: "neuron i komórka mięśniowa mają zasadniczo ten sam genom" },
+      { label: "Różna aktywność genów", detail: "w każdym typie komórki aktywne są inne zestawy genów" },
+      { label: "Różne białka", detail: "komórki wytwarzają inne zestawy białek" },
+      { label: "Różna budowa i funkcja", detail: "białka nadają komórkom ich specjalizację" },
+    ],
+  },
+};
+
+const visualFor = (objective: ObjectiveSeed) => {
+  if (objective.code === "mol_nucleotide_structure") return {
         type: "source-image",
         assetId: "nucleotide-dna-page-6",
         caption: "Jeden nukleotyd DNA — pojedynczy „koralik” nici",
@@ -206,17 +326,21 @@ const visualFor = (objective: ObjectiveSeed) => ({
           { label: "Pomarańczowy pięciokąt", detail: "cukier — deoksyryboza" },
           { label: "Niebieski pierścień", detail: "jedna zasada azotowa" },
         ],
-      }
-    : {
-        type: "sequence",
-        caption: objective.title,
-        steps: [
-          { label: "Punkt wyjścia", detail: "rozpoznaj dane i kierunek procesu" },
-          { label: "Mechanizm", detail: objective.microExplanation },
-          { label: "Skutek", detail: "uzasadnij biologiczną konsekwencję" },
-        ],
-      }),
-});
+      };
+  if (objective.code === "mol_replication_mechanism") return {
+    type: "strand-inheritance",
+    caption: "Dlaczego replikacja DNA jest semikonserwatywna?",
+    parentLabel: "Jedna cząsteczka rodzicielska",
+    processLabel: "nici rozdzielają się; do każdej powstaje nowa nić komplementarna",
+    daughterLabel: "Dwie cząsteczki potomne",
+    oldStrandLabel: "nić rodzicielska",
+    newStrandLabel: "nić nowo zsyntetyzowana",
+    conclusion: "Każda cząsteczka potomna zachowuje jedną z dwóch nici rodzicielskich i zawiera jedną nić nową.",
+  };
+  const visual = sequenceVisuals[objective.code];
+  if (!visual) throw new Error(`Missing controlled visual for ${objective.code}`);
+  return { type: "sequence", ...visual };
+};
 
 async function main() {
   const course = await db.course.findFirst({
