@@ -131,6 +131,16 @@ model CurriculumVersion {
   concepts    Concept[]
 }
 
+model RateLimitBucket {
+  key         String   @id
+  windowStart DateTime
+  count       Int
+  expiresAt   DateTime
+  updatedAt   DateTime
+
+  @@index([expiresAt])
+}
+
 model Subject {
   id      String   @id @default(cuid())
   code    String   @unique

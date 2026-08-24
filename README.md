@@ -147,6 +147,9 @@ wyjaśnienia mechanizmu i transferu do nowego kontekstu.
   PostgreSQL, Secrets Manager, CloudWatch i S3 dla legalnych materiałów.
 - `/api/health` służy jako lekki liveness check procesu, a `/api/ready`
   potwierdza dostępność PostgreSQL bez ujawniania szczegółów połączenia.
+- Płatne akcje AI mają trwały, współdzielony limit PostgreSQL na ucznia.
+  Progi konfiguruje się przez `AI_RATE_LIMIT_PER_10_MINUTES` i
+  `AI_RATE_LIMIT_PER_DAY`; odrzucenie nie zmienia mastery ani nie wywołuje API.
 
 ## Konfiguracja lokalna
 

@@ -7,12 +7,19 @@ import { ConceptIntentService } from "@/server/services/concept-intent-service";
 import { ConceptDiscoveryService } from "@/server/services/concept-discovery-service";
 import { OpenAIProvider } from "@/server/ai/openai-provider";
 import { db } from "@/server/db/client";
+import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
 
 export async function submitConceptAnswer(conceptSessionId: string, form: FormData) {
   const student = await requireStudent();
   const answer = String(form.get("answer") ?? "").trim();
   const submissionId = String(form.get("submissionId") ?? "").trim();
   if (!answer) return;
+  const rateLimit = new AIRateLimitService();
+  if (!(await rateLimit.consume(student.id)).allowed) {
+    await rateLimit.notifyConceptSession(student.id, conceptSessionId);
+    revalidatePath(`/concept-sessions/${conceptSessionId}`);
+    return;
+  }
   const ai = new OpenAIProvider();
   const current = await db.conceptSession.findFirstOrThrow({
     where: { id: conceptSessionId, studentId: student.id, status: "ACTIVE" },

@@ -42,3 +42,18 @@ export function sourceAssetStorageConfig() {
     region: process.env.AWS_REGION?.trim() || "eu-central-1",
   };
 }
+
+function positiveInteger(name: string, fallback: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`);
+  return value;
+}
+
+export function aiRateLimits() {
+  return {
+    perTenMinutes: positiveInteger("AI_RATE_LIMIT_PER_10_MINUTES", 30),
+    perDay: positiveInteger("AI_RATE_LIMIT_PER_DAY", 200),
+  };
+}

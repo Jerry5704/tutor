@@ -5,6 +5,7 @@ import { OpenAIProvider } from "@/server/ai/openai-provider";
 import { requireStudent } from "@/server/auth/session";
 import { QuickExplanationService } from "@/server/services/quick-explanation-service";
 import { logError } from "@/server/observability/logger";
+import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
 
 const requestSchema = z.object({
   sourceKind: z.enum(["STUDY_MESSAGE", "CONCEPT_MESSAGE", "CONCEPT_CARD"]),
@@ -27,6 +28,9 @@ export async function explainSentence(
   const student = await requireStudent();
   const parsed = requestSchema.safeParse({ sourceKind, sourceId, sentence, studySessionId });
   if (!parsed.success) return { error: "Nie można wyjaśnić tego zdania." };
+  if (!(await new AIRateLimitService().consume(student.id)).allowed) {
+    return { error: "Wysłano dużo próśb o wyjaśnienie. Spróbuj ponownie za kilka minut." };
+  }
 
   try {
     const result = await new QuickExplanationService(new OpenAIProvider()).explain(
