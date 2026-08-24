@@ -14,9 +14,10 @@ function normalizedTokens(question: string) {
     .toLocaleLowerCase("pl-PL")
     .normalize("NFKD")
     .replace(/\p{Diacritic}/gu, "")
+    .replace(/ł/gu, "l")
     .replace(/[′’]/gu, "'")
-    .match(/[a-z0-9']{2,}/gu) ?? [])]
-    .filter((token) => !genericWords.has(token))
+    .match(/[a-z0-9']+/gu) ?? [])]
+    .filter((token) => (token.length >= 2 || ["a", "c", "g", "t", "u"].includes(token)) && !genericWords.has(token))
     .map((token) => token.length > 7 ? token.slice(0, 7) : token)
     .sort();
 }
@@ -35,6 +36,7 @@ function focusTokens(fingerprint: string) {
 export function fingerprintsOverlap(candidate: string, previous: string) {
   if (candidate === previous) return true;
   const sameObjective = candidate.split(":", 1)[0] === previous.split(":", 1)[0];
+  if (!sameObjective) return false;
   const left = focusTokens(candidate);
   const right = focusTokens(previous);
   if (!left.size || !right.size) return false;
@@ -43,7 +45,7 @@ export function fingerprintsOverlap(candidate: string, previous: string) {
   const union = new Set([...left, ...right]).size;
   const jaccard = shared / union;
   return (smallerCoverage >= 0.72 && jaccard >= 0.38)
-    || (sameObjective && shared >= 6 && smallerCoverage >= 0.45 && jaccard >= 0.25);
+    || (shared >= 6 && smallerCoverage >= 0.4 && jaccard >= 0.22);
 }
 
 export function intentForNextAction(nextAction: string): QuestionIntent | undefined {
@@ -51,4 +53,22 @@ export function intentForNextAction(nextAction: string): QuestionIntent | undefi
   if (nextAction === "TRANSFER_QUESTION") return "TRANSFER";
   if (["GUIDED_QUESTION", "HINT", "EXPLAIN", "WORKED_EXAMPLE"].includes(nextAction)) return "CORRECTION";
   return "PRACTICE";
+}
+
+export function selectTransferQuestion(params: {
+  learningObjectiveId: string;
+  objectiveTitle: string;
+  configuredQuestion: string;
+  previousFingerprints: string[];
+}) {
+  const configuredFingerprint = questionFingerprint(params.learningObjectiveId, params.configuredQuestion);
+  const repeated = params.previousFingerprints.some((previous) => fingerprintsOverlap(configuredFingerprint, previous));
+  const question = repeated
+    ? `Ułóż własny, nowy przykład sytuacji związanej z zagadnieniem „${params.objectiveTitle}”. Przewidź wynik i uzasadnij go poznanym mechanizmem.`
+    : params.configuredQuestion;
+  return {
+    question,
+    fingerprint: questionFingerprint(params.learningObjectiveId, question),
+    replacedRepeatedQuestion: repeated,
+  };
 }

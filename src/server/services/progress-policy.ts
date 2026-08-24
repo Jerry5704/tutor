@@ -6,8 +6,9 @@ const helpPatterns = [
   /\bty mi (napisz|powiedz|wyjaśnij|wytłumacz)\b/i,
   /\bnie rozumiem\b/i,
   /\bpytasz (mnie )?o to samo\b/i,
-  /\b(jaka|co) (jest|będzie) (poprawna )?odpowiedź\b/i,
-  /\bpodaj (mi )?(poprawną )?odpowiedź\b/i,
+  /\b(jaka|co) (jest|będzie) (poprawna )?odpowiedź/i,
+  /\bjaka jest odpowiedź na\b/i,
+  /\bpodaj (mi )?(poprawną )?odpowiedź/i,
 ];
 
 export function explicitlyRequestsHelp(answer: string) {

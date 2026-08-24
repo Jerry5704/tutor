@@ -49,11 +49,15 @@ describe("progress policy", () => {
     assert.equal(explicitlyRequestsHelp("nie rozumiem"), true);
     assert.equal(explicitlyRequestsHelp("nie wiem"), true);
     assert.equal(explicitlyRequestsHelp("Nie wiem dokładnie, ale skoro matryca biegnie 5′→3′, nowa nić powinna powstawać fragmentami jako opóźniona."), false);
+    assert.equal(explicitlyRequestsHelp("jaka jest odpowiedź na pytanie, które przed chwilą zadałeś?"), true);
+    assert.equal(explicitlyRequestsHelp("po prostu podaj mi poprawną odpowiedź"), true);
   });
 
   it("never grants mastery for uncertainty or a help request", () => {
     assert.equal(masteryDelta(turn({ studentIntent: "UNCERTAIN", evidenceLevel: "NONE" }), 0, false), 0);
     assert.equal(masteryDelta(turn(), 0, true), 0);
+    assert.equal(diagnosticMasteryDelta(0.4, turn({ studentIntent: "REQUEST_HELP", evidenceLevel: "NONE" }), true), 0);
+    assert.equal(nextScaffoldLevel(turn({ studentIntent: "REQUEST_HELP", evidenceLevel: "NONE" }), 2, true), 3);
   });
 
   it("calibrates diagnostic evidence instead of adding tiny learning increments", () => {

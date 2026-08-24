@@ -6,9 +6,9 @@ import { KnowledgeService } from "@/server/services/knowledge-service";
 import { ConceptProgressService } from "@/server/services/concept-progress-service";
 import { requestsVisual, VisualAidService } from "@/server/services/visual-aid-service";
 import {
-  fingerprintsOverlap,
   intentForNextAction,
   questionFingerprint,
+  selectTransferQuestion,
   type QuestionIntent,
 } from "@/server/services/question-history";
 import {
@@ -82,19 +82,6 @@ export class TutorService {
     return (await db.studentMastery.findUnique({
       where: { studentId_learningObjectiveId: { studentId, learningObjectiveId: objectiveId } },
     }))?.mastery ?? 0;
-  }
-
-  private async questionTrace(sessionId: string, learningObjectiveId: string, question: string) {
-    const fingerprint = questionFingerprint(learningObjectiveId, question);
-    const previous = await db.tutorMessage.findMany({
-      where: { sessionId, learningObjectiveId, questionFingerprint: { not: null } },
-      select: { questionFingerprint: true },
-    });
-    return {
-      fingerprint,
-      repeated: previous.some((message) => message.questionFingerprint
-        && fingerprintsOverlap(fingerprint, message.questionFingerprint)),
-    };
   }
 
   async skipRemainingDiagnostic(studentId: string, sessionId: string, studentMessage?: string) {
@@ -521,13 +508,20 @@ export class TutorService {
         },
       });
       if (understood && objectiveState.learningStep === "PRACTICE") {
-        const transferTrace = await this.questionTrace(sessionId, objective.id, objective.transferPrompt);
-        const transferQuestion = transferTrace.repeated
-          ? `Ułóż własny, nowy przykład sytuacji związanej z zagadnieniem „${objective.title}”. Przewidź wynik i uzasadnij go poznanym mechanizmem.`
-          : objective.transferPrompt;
+        const previousQuestions = await db.tutorMessage.findMany({
+          where: { sessionId, learningObjectiveId: objective.id, questionFingerprint: { not: null } },
+          select: { questionFingerprint: true },
+        });
+        const transfer = selectTransferQuestion({
+          learningObjectiveId: objective.id,
+          objectiveTitle: objective.title,
+          configuredQuestion: objective.transferPrompt,
+          previousFingerprints: previousQuestions.flatMap((message) => message.questionFingerprint ? [message.questionFingerprint] : []),
+        });
+        const transferQuestion = transfer.question;
         tutorMessage = `${result.turn.feedback}\n\nDobrze — teraz sprawdźmy transfer do nowej sytuacji.\n\n${transferQuestion}`;
         questionIntent = "TRANSFER";
-        messageQuestionFingerprint = questionFingerprint(objective.id, transferQuestion);
+        messageQuestionFingerprint = transfer.fingerprint;
         await db.sessionObjectiveState.update({
           where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
           data: { learningStep: "TRANSFER", consecutiveStruggles: 0 },
