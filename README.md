@@ -167,6 +167,20 @@ do lokalnego vertical slice i przed wdrożeniem musi zostać zastąpione normaln
 procesem rejestracji/provisioningu. Aplikacja jest dostępna pod
 `http://localhost:3000`.
 
+### Obraz produkcyjny
+
+Repozytorium zawiera wieloetapowy `Dockerfile` dla trybu standalone Next.js.
+Obraz działa jako użytkownik bez uprawnień roota i nie zawiera `.env`, PDF-a,
+OCR ani lokalnych ilustracji podręcznika:
+
+```bash
+docker build -t tutor-biologii .
+docker run --rm -p 3000:3000 --env-file .env tutor-biologii
+```
+
+Na środowisku publicznym migracje uruchamia się jako osobny krok wdrożenia,
+przed podmianą działającej wersji aplikacji.
+
 Zmienne znajdują się w `.env.example`: `DATABASE_URL`, `AUTH_SECRET`,
 `OPENAI_API_KEY`, `OPENAI_MODEL`, `INTERNET_VISUALS_ENABLED`. Ustawienie
 `INTERNET_VISUALS_ENABLED=false` wyłącza wyszukiwanie ilustracji w Wikimedia
