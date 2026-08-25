@@ -15,6 +15,7 @@ type ObjectiveSeed = {
   practicePrompt: string;
   transferPrompt: string;
   microExplanation: string;
+  hook?: string;
   workedExample?: string;
 };
 
@@ -84,11 +85,13 @@ const topics: TopicSeed[] = [
       {
         code: "mol_leading_lagging_strands",
         title: "Nić wiodąca, opóźniona i oczko replikacyjne",
-        description: "Rozpoznaje na schemacie nici wiodące i opóźnione oraz wyjaśnia syntezę fragmentów Okazaki.",
+        description: "Rozpoznaje na schemacie nici wiodące i opóźnione oraz wyjaśnia syntezę fragmentów Okazaki. Poprawne wyjaśnienie łączy antyrównoległość matryc, syntezę nowej nici wyłącznie 5′→3′ i kierunek ruchu widełek; nie wymaga osobnego sformułowania o odczycie 3′→5′, jeśli uczeń jednoznacznie opisuje te zależności.",
         diagnosticPrompt: "Dlaczego jedna nowa nić powstaje ciągle, a druga fragmentami, skoro obie polimerazy syntetyzują 5′→3′?",
-        practicePrompt: "Jak na schemacie widełek rozpoznasz nić opóźnioną? Podaj kryterium, nie zgaduj położenia.",
-        transferPrompt: "Widełki przesuwają się w prawo, a matryca biegnie w tym kierunku 5′→3′. Określ sposób syntezy nowej nici i uzasadnij.",
-        microExplanation: "Antyrównoległość matryc i jeden kierunek pracy polimerazy powodują syntezę ciągłą na jednej oraz nieciągłą na drugiej nici.",
+        practicePrompt: "Widełki przesuwają się w prawo. Jedna matryca biegnie od lewej do prawej 3′→5′. W którą stronę będzie rosła na niej nowa nić, czy powstanie ciągle, i jak ją nazwiesz?",
+        transferPrompt: "W innym schemacie widełki przesuwają się w lewo. Patrząc w kierunku ich ruchu, matryca biegnie 5′→3′. Czy nowa nić na tej matrycy będzie wiodąca czy opóźniona? Uzasadnij kolejno: kierunek syntezy nowej nici i jej relację do ruchu widełek.",
+        hook: "Widełki replikacyjne przesuwają się jak rozpinany zamek. Obie polimerazy mają tę samą zasadę pracy, ale matryce są zwrócone przeciwnie — dlatego tylko jedna polimeraza może podążać za otwierającymi się widełkami.",
+        microExplanation: "Polimeraza DNA może dołączać nukleotydy tylko do końca 3′, dlatego każda nowa nić rośnie 5′→3′. Dwie nici matrycowe są antyrównoległe. Na matrycy biegnącej ku widełkom 3′→5′ polimeraza może podążać za ich ruchem i tworzy nić wiodącą ciągle. Druga matryca biegnie ku widełkom 5′→3′, więc polimeraza nie może syntetyzować nowej nici w kierunku widełek. Zaczyna wielokrotnie przy kolejnych starterach i tworzy fragmenty Okazaki w kierunku przeciwnym do ruchu widełek. Ligaza później łączy te fragmenty.",
+        workedExample: "Załóż, że widełki przesuwają się w prawo. Jeśli matryca od lewej do prawej biegnie 3′→5′, polimeraza odczytuje ją w dozwolonym kierunku i buduje nową nić 5′→3′ również w prawo — ciągle, jako nić wiodącą. Na matrycy biegnącej 5′→3′ w prawo polimeraza syntetyzuje krótkie odcinki 5′→3′ w lewo, czyli przeciwnie do ruchu widełek. Gdy odsłania się kolejny fragment matrycy, potrzebny jest nowy starter i powstaje kolejny fragment Okazaki. Ligaza łączy te fragmenty w jedną nić.",
       },
     ],
   },
@@ -221,16 +224,6 @@ const sequenceVisuals: Record<string, { caption: string; steps: Array<{ label: s
       { label: "Ligaza", detail: "łączy sąsiednie fragmenty nowej nici" },
     ],
   },
-  mol_leading_lagging_strands: {
-    caption: "Dlaczego jedna nić powstaje ciągle, a druga fragmentami?",
-    steps: [
-      { label: "Matryce są antyrównoległe", detail: "przy widełkach biegną w przeciwnych kierunkach" },
-      { label: "Jedna reguła polimerazy", detail: "nowa nić zawsze rośnie 5′→3′" },
-      { label: "Nić wiodąca", detail: "może rosnąć ciągle w kierunku ruchu widełek" },
-      { label: "Nić opóźniona", detail: "powstaje odcinkami — fragmentami Okazaki" },
-      { label: "Ligaza", detail: "scala fragmenty Okazaki w jedną nić" },
-    ],
-  },
   mol_gene_structure: {
     caption: "Od genu nieciągłego do dojrzałego mRNA",
     steps: [
@@ -337,6 +330,16 @@ const visualFor = (objective: ObjectiveSeed) => {
     newStrandLabel: "nić nowo zsyntetyzowana",
     conclusion: "Każda cząsteczka potomna zachowuje jedną z dwóch nici rodzicielskich i zawiera jedną nić nową.",
   };
+  if (objective.code === "mol_leading_lagging_strands") return {
+    type: "replication-fork",
+    caption: "Ten sam kierunek syntezy, dwa sposoby powstawania nici",
+    forkDirectionLabel: "ruch widełek replikacyjnych",
+    polymeraseRule: "nowa nić zawsze rośnie 5′→3′, ponieważ polimeraza dołącza nukleotydy do jej końca 3′.",
+    leadingDetail: "rośnie 5′→3′ w tym samym kierunku co widełki, dlatego może powstawać ciągle.",
+    laggingDetail: "każdy fragment rośnie 5′→3′ przeciwnie do ruchu widełek; ligaza łączy fragmenty w całość.",
+    okazakiLabel: "fragmenty Okazaki",
+    conclusion: "O tym, która nić jest wiodąca, nie decyduje jej położenie na rysunku, lecz kierunek syntezy względem ruchu widełek.",
+  };
   const visual = sequenceVisuals[objective.code];
   if (!visual) throw new Error(`Missing controlled visual for ${objective.code}`);
   return { type: "sequence", ...visual };
@@ -393,7 +396,7 @@ async function main() {
           practicePrompt: objective.practicePrompt,
           transferPrompt: objective.transferPrompt,
           microExplanation: objective.microExplanation,
-          hook: `Zobaczmy, jak ${objective.title.toLocaleLowerCase("pl-PL")} działa w konkretnym mechanizmie.`,
+          hook: objective.hook ?? `Zobaczmy, jak ${objective.title.toLocaleLowerCase("pl-PL")} działa w konkretnym mechanizmie.`,
           workedExample: objective.workedExample ?? `${objective.microExplanation} Najpierw nazwij elementy prostymi słowami, potem opisz ich połączenie, a dopiero na końcu użyj terminów biologicznych.`,
           visualData: visualFor(objective),
           maturaRelevant: true,
@@ -408,7 +411,7 @@ async function main() {
           diagnosticPrompt: objective.diagnosticPrompt,
           practicePrompt: objective.practicePrompt,
           transferPrompt: objective.transferPrompt,
-          hook: `Zobaczmy, jak ${objective.title.toLocaleLowerCase("pl-PL")} działa w konkretnym mechanizmie.`,
+          hook: objective.hook ?? `Zobaczmy, jak ${objective.title.toLocaleLowerCase("pl-PL")} działa w konkretnym mechanizmie.`,
           microExplanation: objective.microExplanation,
           workedExample: objective.workedExample ?? `${objective.microExplanation} Najpierw wskaż dane, następnie mechanizm, a na końcu biologiczny skutek.`,
           visualData: visualFor(objective),

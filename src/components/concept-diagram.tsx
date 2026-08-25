@@ -31,7 +31,17 @@ const strandInheritanceSchema = z.object({
   newStrandLabel: z.string(),
   conclusion: z.string(),
 });
-const diagramSchema = z.discriminatedUnion("type", [sequenceSchema, comparisonSchema, sourceImageSchema, strandInheritanceSchema]);
+const replicationForkSchema = z.object({
+  type: z.literal("replication-fork"),
+  caption: z.string(),
+  forkDirectionLabel: z.string(),
+  polymeraseRule: z.string(),
+  leadingDetail: z.string(),
+  laggingDetail: z.string(),
+  okazakiLabel: z.string(),
+  conclusion: z.string(),
+});
+const diagramSchema = z.discriminatedUnion("type", [sequenceSchema, comparisonSchema, sourceImageSchema, strandInheritanceSchema, replicationForkSchema]);
 
 type VisualAsset = { key: string; caption: string; altText: string; attribution: string };
 
@@ -63,6 +73,27 @@ export function ConceptDiagram({ data, asset }: { data: unknown; asset?: VisualA
         </section>
       </div>
       <div className="strand-legend"><span><i className="dna-strand old" />{diagram.oldStrandLabel}</span><span><i className="dna-strand new" />{diagram.newStrandLabel}</span></div>
+      <p className="diagram-conclusion">{diagram.conclusion}</p>
+    </figure>;
+  }
+  if (diagram.type === "replication-fork") {
+    return <figure className="concept-diagram replication-fork-diagram" aria-label={diagram.caption}>
+      <figcaption>{diagram.caption}</figcaption>
+      <p className="fork-rule"><strong>Jedna reguła:</strong> {diagram.polymeraseRule}</p>
+      <div className="fork-scroll">
+        <div className="fork-motion"><span>{diagram.forkDirectionLabel}</span><span aria-hidden="true">→</span></div>
+        <div className="fork-schematic" aria-hidden="true">
+          <div className="fork-row"><b>3′</b><span className="fork-line template" /><b>5′</b><em>matryca</em></div>
+          <div className="fork-row new-leading"><b>5′</b><span className="fork-line leading"><i>→</i></span><b>3′</b><em>nowa nić wiodąca</em></div>
+          <div className="fork-divider"><span>widełki</span></div>
+          <div className="fork-row"><b>5′</b><span className="fork-line template" /><b>3′</b><em>matryca</em></div>
+          <div className="fork-row new-lagging"><b>3′</b><span className="okazaki-fragments"><i>←</i><i>←</i><i>←</i></span><b>5′</b><em>{diagram.okazakiLabel}</em></div>
+        </div>
+      </div>
+      <div className="fork-explanations">
+        <p><strong>Nić wiodąca:</strong> {diagram.leadingDetail}</p>
+        <p><strong>Nić opóźniona:</strong> {diagram.laggingDetail}</p>
+      </div>
       <p className="diagram-conclusion">{diagram.conclusion}</p>
     </figure>;
   }
