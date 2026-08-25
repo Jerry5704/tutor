@@ -1,3 +1,15 @@
+# Working agreements
+
+- Always work in small, reversible steps.
+- Never implement more than one feature area at a time.
+- Always explain the next step before editing files.
+- Stop after each step and wait for confirmation, unless the user explicitly asks for autonomous continuation.
+- Prefer AWS-native services.
+- Keep the code simple and production-oriented.
+- Add or update automated tests for behavioral changes and bug fixes when practical.
+- Run the relevant tests after code changes; run the full test suite for core or cross-cutting changes.
+- Do not run paid API evaluations, paid simulations, or tests that write to the database unless the user explicitly authorizes them.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
