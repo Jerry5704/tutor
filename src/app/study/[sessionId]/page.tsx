@@ -15,6 +15,7 @@ import { sessionAcceptsInput } from "@/server/services/session-lifecycle-policy"
 import { conceptMentions } from "@/server/services/concept-mentions";
 import { StudentModelService } from "@/server/services/student-model-service";
 import { sessionProgressSummary } from "@/server/services/session-progress-summary";
+import { TutorFeedback, type FeedbackRating } from "@/components/tutor-feedback";
 import { beginPractice, openConceptMention, pauseStudySession, resetUnitProgress, resumeStudySession, skipDiagnostic, submitAnswer, submitSideQuestion } from "./actions";
 
 export default async function Study({ params, searchParams }: { params: Promise<{ sessionId: string }>; searchParams: Promise<{ conceptUnavailable?: string; summary?: string }> }) {
@@ -36,6 +37,14 @@ export default async function Study({ params, searchParams }: { params: Promise<
   if (!session) notFound();
   const objectives = session.objectiveStates.map(({ learningObjective }) => learningObjective);
   const studentModel = new StudentModelService();
+  const feedbackTargetIds = [
+    ...session.messages.filter((message) => message.role === "TUTOR").map((message) => message.id),
+    ...session.sideChatMessages.filter((message) => message.role === "TUTOR").map((message) => message.id),
+  ];
+  const feedback = feedbackTargetIds.length
+    ? await db.tutorResponseFeedback.findMany({ where: { studentId: student.id, targetId: { in: feedbackTargetIds } } })
+    : [];
+  const feedbackByTarget = Object.fromEntries(feedback.map((item) => [item.targetId, item.rating])) as Record<string, FeedbackRating>;
   const showPausedSummary = summary === "paused" && session.pausedAt !== null && session.endedAt === null;
 
   if (showPausedSummary) {
@@ -117,6 +126,7 @@ export default async function Study({ params, searchParams }: { params: Promise<
       candidateAction={message.role === "TUTOR" ? openConceptMention.bind(null, session.id, message.id) : undefined}
     />
     {message.id === latestVisualMessageId && message.learningObjective && <ConceptDiagram data={message.learningObjective.visualData} asset={message.knowledgeAsset ?? undefined} />}
+    {message.role === "TUTOR" && <TutorFeedback targetType="STUDY_MESSAGE" targetId={message.id} currentRating={feedbackByTarget[message.id]} />}
   </div>;
 
   return <main className="narrow">
@@ -151,6 +161,6 @@ export default async function Study({ params, searchParams }: { params: Promise<
       <form action={pauseStudySession.bind(null, session.id)}><button type="submit" className="button secondary">Zakończ na dziś i zachowaj postęp</button></form>
       <details className="card"><summary>Opcje resetowania</summary><p className="muted">Reset usuwa bieżące mastery tego działu, ale zachowuje historię do audytu.</p><ResetProgressForm action={resetUnitProgress.bind(null, session.id)} /></details>
     </>}
-    {sessionAcceptsInput(session) && <SideChat sessionId={session.id} messages={session.sideChatMessages} concepts={concepts} action={submitSideQuestion.bind(null, session.id)} />}
+    {sessionAcceptsInput(session) && <SideChat sessionId={session.id} messages={session.sideChatMessages} concepts={concepts} action={submitSideQuestion.bind(null, session.id)} feedbackByMessage={feedbackByTarget} />}
   </main>;
 }

@@ -52,7 +52,10 @@ export interface AIResult {
   model: string;
   latencyMs: number;
   inputTokens?: number;
+  cachedInputTokens?: number;
   outputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
   validationAudit?: {
     reportedLearningObjectives: string[];
     acceptedLearningObjectives: string[];
@@ -104,7 +107,7 @@ export interface QuickExplanationContext {
 }
 
 export interface ExplanationProvider {
-  explainSelection(context: QuickExplanationContext): Promise<QuickExplanation>;
+  explainSelection(context: QuickExplanationContext): Promise<ConceptAIResult<QuickExplanation>>;
 }
 
 export const conceptTurnSchema = z.object({
@@ -161,7 +164,10 @@ export interface ConceptAIResult<T> {
   model: string;
   latencyMs: number;
   inputTokens?: number;
+  cachedInputTokens?: number;
   outputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
 }
 
 export interface ConceptAIProvider {

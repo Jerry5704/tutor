@@ -7,6 +7,8 @@ import { ConceptDiscoveryService } from "@/server/services/concept-discovery-ser
 import { ConceptIntentService } from "@/server/services/concept-intent-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { plainTutorText } from "@/server/services/plain-tutor-text";
+import { AIUsageService } from "@/server/services/ai-usage-service";
+import { LearningEventService } from "@/server/services/learning-event-service";
 
 const RATE_LIMIT_MESSAGE = "Na chwilę zatrzymuję nowe odpowiedzi AI, ponieważ wysłano ich dużo w krótkim czasie. Wróć do tego pytania za kilka minut.";
 const NO_SOURCE_MESSAGE = "Nie mam teraz wystarczającego fragmentu zatwierdzonych materiałów, żeby odpowiedzieć na to rzetelnie. Nie chcę zgadywać — możesz wrócić do tego pytania później.";
@@ -17,6 +19,8 @@ export class SideChatService {
     private readonly ai: AIProvider,
     private readonly knowledge = new KnowledgeService(),
     private readonly rateLimit = new AIRateLimitService(),
+    private readonly aiUsage = new AIUsageService(),
+    private readonly learningEvents = new LearningEventService(),
   ) {}
 
   async ask(studentId: string, studySessionId: string, question: string, submissionId?: string, preferredObjectiveId?: string) {
@@ -48,6 +52,15 @@ export class SideChatService {
         ?? await db.learningObjective.findFirst({ where: { id: objectiveId, topic: { unitId: session.unitId } } })
       : undefined;
     if (!objective) throw new Error("Nie można ustalić aktualnego celu nauki.");
+
+    await this.learningEvents.record({
+      studentId,
+      studySessionId,
+      learningObjectiveId: objective.id,
+      eventType: "SIDE_QUESTION_SUBMITTED",
+      metadata: { characterCount: normalizedQuestion.length },
+      deduplicationKey: submissionId ? `side-question:${submissionId}` : undefined,
+    });
 
     const limit = await this.rateLimit.consume(studentId);
     if (!limit.allowed) {
@@ -104,14 +117,19 @@ export class SideChatService {
         return;
       }
 
-      const result = await this.ai.answerSideQuestion({
+      const result = await this.aiUsage.capture({
+        studentId,
+        studySessionId,
+        feature: "SIDE_CHAT",
+        promptVersion: SIDE_CHAT_PROMPT_VERSION,
+      }, () => this.ai.answerSideQuestion({
         question: normalizedQuestion,
         objectiveTitle: objective.title,
         objectiveDescription: objective.description,
         objectiveGuidance: [objective.microExplanation, objective.workedExample].filter(Boolean).join("\n"),
         knowledge,
         recentMessages: session.sideChatMessages.reverse().map((message) => ({ role: message.role, content: message.content })),
-      });
+      }));
       const allowedLocators = new Set(knowledge.map((item) => item.locator));
       const acceptedLocators = [...new Set(result.value.sourceLocators.filter((locator) => allowedLocators.has(locator)))];
       await db.$transaction([

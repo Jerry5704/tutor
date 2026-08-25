@@ -1,5 +1,7 @@
 import type { QuickExplanationContext } from "@/server/ai/contracts";
 
+export const QUICK_EXPLANATION_PROMPT_VERSION = "quick-explanation-v1";
+
 export function quickExplanationInstructions(context: QuickExplanationContext) {
   return `Wyjaśniasz po polsku krótki fragment lekcji biologii uczniowi liceum.
 Odpowiedz w 2–5 prostych zdaniach. Najpierw wyjaśnij znaczenie zaznaczenia w jego aktualnym kontekście,

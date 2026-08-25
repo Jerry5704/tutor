@@ -12,6 +12,7 @@ import { uniqueConceptIds } from "@/server/services/session-lifecycle-policy";
 import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
 import { SideChatService } from "@/server/services/side-chat-service";
 import { conceptMentions } from "@/server/services/concept-mentions";
+import { LearningEventService } from "@/server/services/learning-event-service";
 
 export async function submitSideQuestion(sessionId: string, form: FormData) {
   const student = await requireStudent();
@@ -55,6 +56,26 @@ export async function submitAnswer(sessionId: string, form: FormData) {
     revalidatePath(`/study/${sessionId}`);
     return;
   }
+  const telemetrySession = await db.studySession.findFirstOrThrow({
+    where: { id: sessionId, studentId: student.id, endedAt: null, pausedAt: null },
+    select: {
+      currentObjectiveId: true,
+      messages: { where: { role: "TUTOR" }, orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+    },
+  });
+  const latestTutorAt = telemetrySession.messages[0]?.createdAt;
+  await new LearningEventService().record({
+    studentId: student.id,
+    studySessionId: sessionId,
+    learningObjectiveId: telemetrySession.currentObjectiveId ?? undefined,
+    eventType: "ANSWER_SUBMITTED",
+    metadata: {
+      surface: "MAIN_STUDY",
+      characterCount: answer.length,
+      responseTimeMs: latestTutorAt ? Math.max(0, Date.now() - latestTutorAt.getTime()) : 0,
+    },
+    deduplicationKey: submissionId ? `answer:${submissionId}` : undefined,
+  });
   const ai = new OpenAIProvider();
   const requestedConcept = await new ConceptDiscoveryService(ai).discover(student.id, sessionId, answer);
   const concept = requestedConcept ?? await new ConceptIntentService().resolve(student.id, sessionId, answer);
@@ -76,6 +97,7 @@ export async function beginPractice(sessionId: string) {
 export async function skipDiagnostic(sessionId: string) {
   const student = await requireStudent();
   await new TutorService(new OpenAIProvider()).skipRemainingDiagnostic(student.id, sessionId);
+  await new LearningEventService().record({ studentId: student.id, studySessionId: sessionId, eventType: "DIAGNOSTIC_SKIPPED" });
   revalidatePath(`/study/${sessionId}`);
 }
 
@@ -91,6 +113,7 @@ export async function pauseStudySession(sessionId: string) {
       data: { status: "PAUSED" },
     }),
   ]);
+  await new LearningEventService().record({ studentId: student.id, studySessionId: sessionId, eventType: "SESSION_PAUSED" });
   redirect(`/study/${sessionId}?summary=paused`);
 }
 
@@ -100,6 +123,7 @@ export async function resumeStudySession(sessionId: string) {
     where: { id: sessionId, studentId: student.id, endedAt: null, pausedAt: { not: null } },
     data: { pausedAt: null },
   });
+  await new LearningEventService().record({ studentId: student.id, studySessionId: sessionId, eventType: "SESSION_RESUMED" });
   redirect(`/study/${sessionId}`);
 }
 

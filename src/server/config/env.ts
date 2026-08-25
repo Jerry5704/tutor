@@ -23,6 +23,25 @@ export function openAIConfig() {
   };
 }
 
+function optionalNonNegativeNumber(name: string) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be a non-negative number`);
+  return value;
+}
+
+export function openAIPricing(model: string) {
+  const defaults = /^gpt-5\.4-mini(?:-|$)/u.test(model)
+    ? { input: 0.75, cachedInput: 0.075, output: 4.5 }
+    : undefined;
+  return {
+    inputUsdPerMillion: optionalNonNegativeNumber("OPENAI_INPUT_USD_PER_1M_TOKENS") ?? defaults?.input,
+    cachedInputUsdPerMillion: optionalNonNegativeNumber("OPENAI_CACHED_INPUT_USD_PER_1M_TOKENS") ?? defaults?.cachedInput,
+    outputUsdPerMillion: optionalNonNegativeNumber("OPENAI_OUTPUT_USD_PER_1M_TOKENS") ?? defaults?.output,
+  };
+}
+
 export function internetVisualsEnabled() {
   return process.env.INTERNET_VISUALS_ENABLED?.trim().toLowerCase() !== "false";
 }

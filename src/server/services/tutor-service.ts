@@ -2,11 +2,14 @@ import type { AIProvider, AIResult, TutorTurn } from "@/server/ai/contracts";
 import { validateTutorAIResult } from "@/server/ai/output-validation";
 import { db } from "@/server/db/client";
 import { AssessmentService } from "@/server/services/assessment-service";
+import { AIUsageService } from "@/server/services/ai-usage-service";
+import { LearningEventService } from "@/server/services/learning-event-service";
 import { CurriculumService } from "@/server/services/curriculum-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { ConceptProgressService } from "@/server/services/concept-progress-service";
 import { StudentModelService } from "@/server/services/student-model-service";
 import { logError, logInfo } from "@/server/observability/logger";
+import { PROMPT_VERSION } from "@/server/prompts/tutor";
 import { createStudentAnswerOnce } from "@/server/services/student-answer-idempotency";
 import { resumePausedSessionData } from "@/server/services/session-lifecycle-policy";
 import { finishesDiagnosticProbe, learningTransition } from "@/server/services/learning-transition-policy";
@@ -74,6 +77,8 @@ export class TutorService {
     private readonly knowledge = new KnowledgeService(),
     private readonly visuals = new VisualAidService(),
     private readonly conceptProgress = new ConceptProgressService(),
+    private readonly aiUsage = new AIUsageService(),
+    private readonly learningEvents = new LearningEventService(),
   ) {}
 
   private objectives(unit: Awaited<ReturnType<CurriculumService["getUnitForStudent"]>>) {
@@ -282,7 +287,9 @@ export class TutorService {
     if (existing) {
       const resumeData = resumePausedSessionData(existing);
       if (!resumeData) return existing;
-      return db.studySession.update({ where: { id: existing.id }, data: resumeData });
+      const resumed = await db.studySession.update({ where: { id: existing.id }, data: resumeData });
+      await this.learningEvents.record({ studentId, studySessionId: existing.id, eventType: "SESSION_RESUMED" });
+      return resumed;
     }
 
     const unit = await this.curriculum.getUnitForStudent(unitId, studentId);
@@ -304,6 +311,13 @@ export class TutorService {
       } },
     } });
     await this.ensureObjectiveStates(session.id, objectives.map((item) => item.id), objective.id);
+    await this.learningEvents.record({
+      studentId,
+      studySessionId: session.id,
+      learningObjectiveId: objective.id,
+      eventType: "SESSION_STARTED",
+      deduplicationKey: `session-started:${session.id}`,
+    });
     return session;
   }
 
@@ -424,7 +438,12 @@ export class TutorService {
     const latestTutorMessage = session.messages.find((message) => message.role === "TUTOR")?.content ?? "";
     const currentQuestion = visibleQuestionFromMessage(latestTutorMessage);
     const knowledge = await this.knowledge.retrieveForObjective(objective.id, content);
-    const rawResult = await this.ai.assessAndRespond({
+    const rawResult = await this.aiUsage.capture({
+      studentId,
+      studySessionId: sessionId,
+      feature: "TUTOR_TURN",
+      promptVersion: PROMPT_VERSION,
+    }, () => this.ai.assessAndRespond({
       phase: session.phase === "DIAGNOSTIC" ? "DIAGNOSTIC" : "LEARNING",
       objectiveCode: objective.code,
       objectiveDescription: objective.description,
@@ -441,7 +460,7 @@ export class TutorService {
       knowledge,
       recentMessages: session.messages.toReversed().map(({ role, content: text }) => ({ role, content: text })),
       answer: content,
-    }).catch(async (error: unknown) => {
+    })).catch(async (error: unknown) => {
       await db.studentAnswer.delete({ where: { id: answer.id } });
       logError("tutor_ai_failed", error, {
         studentId,
@@ -774,6 +793,16 @@ export class TutorService {
         endedAt,
       } }),
     ]);
+    if (endedAt) {
+      await this.learningEvents.record({
+        studentId,
+        studySessionId: sessionId,
+        learningObjectiveId: messageObjectiveId,
+        eventType: "SESSION_COMPLETED",
+        metadata: { surface: "MAIN_STUDY" },
+        deduplicationKey: `study-completed:${sessionId}`,
+      });
+    }
     return result.turn satisfies TutorTurn;
   }
 }

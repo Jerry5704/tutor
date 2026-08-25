@@ -4,6 +4,8 @@ import { KnowledgeService } from "@/server/services/knowledge-service";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
 import { normalizedConceptAlias } from "@/server/services/concept-alias-policy";
 import { requestedConceptTerm } from "@/server/services/concept-term-policy";
+import { AIUsageService } from "@/server/services/ai-usage-service";
+import { CONCEPT_GENERATION_PROMPT_VERSION } from "@/server/prompts/concept-generation";
 
 function normalize(value: string) {
   return value.toLocaleLowerCase("pl-PL").normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/\s+/gu, " ").trim();
@@ -17,6 +19,7 @@ export class ConceptDiscoveryService {
   constructor(
     private readonly ai: ConceptAIProvider,
     private readonly knowledge = new KnowledgeService(),
+    private readonly aiUsage = new AIUsageService(),
   ) {}
 
   private async addRequestedAlias(conceptId: string, alias: string) {
@@ -64,11 +67,16 @@ export class ConceptDiscoveryService {
     const sources = await this.knowledge.retrieveForObjective(objective.id, term, 3);
     if (!sources.length) return undefined;
 
-    const result = await this.ai.generateConcept({
+    const result = await this.aiUsage.capture({
+      studentId,
+      studySessionId,
+      feature: "CONCEPT_GENERATION",
+      promptVersion: CONCEPT_GENERATION_PROMPT_VERSION,
+    }, () => this.ai.generateConcept({
       requestedTerm: term,
       objectiveDescription: objective.description,
       sources: sources.map((source) => ({ locator: source.locator, content: source.content })),
-    });
+    }));
     const generated = result.value;
     if (!generated.supportedBySources) return undefined;
 

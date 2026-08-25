@@ -9,6 +9,7 @@ import { OpenAIProvider } from "@/server/ai/openai-provider";
 import { db } from "@/server/db/client";
 import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
 import { SideChatService } from "@/server/services/side-chat-service";
+import { LearningEventService } from "@/server/services/learning-event-service";
 
 export async function submitSideQuestion(conceptSessionId: string, form: FormData) {
   const student = await requireStudent();
@@ -44,7 +45,23 @@ export async function submitConceptAnswer(conceptSessionId: string, form: FormDa
   const ai = new OpenAIProvider();
   const current = await db.conceptSession.findFirstOrThrow({
     where: { id: conceptSessionId, studentId: student.id, status: "ACTIVE" },
-    include: { concept: { include: { objectives: { orderBy: { importance: "desc" }, take: 1 } } } },
+    include: {
+      concept: { include: { objectives: { orderBy: { importance: "desc" }, take: 1 } } },
+      messages: { where: { role: "TUTOR" }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
+  });
+  const latestTutorAt = current.messages[0]?.createdAt;
+  await new LearningEventService().record({
+    studentId: student.id,
+    studySessionId: current.parentStudySessionId,
+    learningObjectiveId: current.concept.objectives[0]?.learningObjectiveId,
+    eventType: "ANSWER_SUBMITTED",
+    metadata: {
+      surface: "CONCEPT_SESSION",
+      characterCount: answer.length,
+      responseTimeMs: latestTutorAt ? Math.max(0, Date.now() - latestTutorAt.getTime()) : 0,
+    },
+    deduplicationKey: submissionId ? `concept-answer:${submissionId}` : undefined,
   });
   const requested = await new ConceptDiscoveryService(ai).discover(
     student.id,

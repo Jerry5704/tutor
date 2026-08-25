@@ -3,6 +3,7 @@ import { ConceptText } from "@/components/concept-text";
 import { SideQuestionForm } from "@/components/side-question-form";
 import { annotateConceptText, type AnnotatableConcept } from "@/server/services/concept-annotation";
 import { plainTutorText } from "@/server/services/plain-tutor-text";
+import { TutorFeedback, type FeedbackRating } from "@/components/tutor-feedback";
 
 type SideMessage = {
   id: string;
@@ -12,11 +13,12 @@ type SideMessage = {
   linkedConcept: { slug: string; name: string } | null;
 };
 
-export function SideChat({ sessionId, messages, concepts, action }: {
+export function SideChat({ sessionId, messages, concepts, action, feedbackByMessage = {} }: {
   sessionId: string;
   messages: SideMessage[];
   concepts: AnnotatableConcept[];
   action: (formData: FormData) => void | Promise<void>;
+  feedbackByMessage?: Record<string, FeedbackRating>;
 }) {
   const ordered = [...messages].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
   return <details className="side-chat-drawer" open={ordered.length > 0 ? true : undefined}>
@@ -27,6 +29,7 @@ export function SideChat({ sessionId, messages, concepts, action }: {
         ? <div className="side-chat-log" aria-live="polite">{ordered.map((message) => <div key={message.id} className={`side-chat-bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>
           <ConceptText sessionId={sessionId} segments={annotateConceptText(plainTutorText(message.content), concepts)} />
           {message.linkedConcept && <Link className="side-chat-concept-link" href={`/study/${sessionId}/concepts/${message.linkedConcept.slug}`}>Otwórz kartę: {message.linkedConcept.name} →</Link>}
+          {message.role === "TUTOR" && <TutorFeedback targetType="SIDE_CHAT_MESSAGE" targetId={message.id} currentRating={feedbackByMessage[message.id]} />}
         </div>)}</div>
         : <p className="muted side-chat-empty">Zapytaj o termin lub fragment biologii, którego teraz nie rozumiesz.</p>}
       <SideQuestionForm action={action} />

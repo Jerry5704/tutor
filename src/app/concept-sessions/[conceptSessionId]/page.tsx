@@ -9,6 +9,7 @@ import { db } from "@/server/db/client";
 import { annotateConceptText } from "@/server/services/concept-annotation";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
 import { pauseConceptSession, submitConceptAnswer, submitSideQuestion } from "./actions";
+import { TutorFeedback, type FeedbackRating } from "@/components/tutor-feedback";
 
 function masteryLabel(mastery: number) {
   if (mastery >= 0.85) return "Bardzo dobre opanowanie";
@@ -29,6 +30,14 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
     },
   });
   if (!session) notFound();
+  const feedbackTargetIds = [
+    ...session.messages.filter((message) => message.role === "TUTOR").map((message) => message.id),
+    ...session.parentStudySession.sideChatMessages.filter((message) => message.role === "TUTOR").map((message) => message.id),
+  ];
+  const feedback = feedbackTargetIds.length
+    ? await db.tutorResponseFeedback.findMany({ where: { studentId: student.id, targetId: { in: feedbackTargetIds } } })
+    : [];
+  const feedbackByTarget = Object.fromEntries(feedback.map((item) => [item.targetId, item.rating])) as Record<string, FeedbackRating>;
   const state = session.concept.studentStates[0];
   const returnHref = session.parentConceptSessionId
     ? `/concept-sessions/${session.parentConceptSessionId}`
@@ -51,6 +60,10 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
     explanationSource={message.role === "TUTOR" ? { kind: "CONCEPT_MESSAGE", id: message.id } : undefined}
     segments={annotateConceptText(message.content, relatedConcepts)}
   />;
+  const messageBubble = (message: (typeof session.messages)[number]) => <div id={`message-${message.id}`} key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>
+    {messageContent(message)}
+    {message.role === "TUTOR" && <TutorFeedback targetType="CONCEPT_MESSAGE" targetId={message.id} currentRating={feedbackByTarget[message.id]} />}
+  </div>;
   return <main className="narrow concept-session-page">
     <div className="row"><div><p className="eyebrow">Boczna ścieżka pojęcia</p><h1>{session.concept.name}</h1></div><span className="concept-session-badge">Główny tok jest wstrzymany</span></div>
     {session.status === "COMPLETED" ? <section className="card concept-result">
@@ -64,11 +77,11 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
       {focusQuestion && earlierMessages.length > 0 && <details className="concept-history">
         <summary>Pokaż wcześniejsze wyjaśnienie i rozmowę</summary>
         <section className="chat compact">
-          {earlierMessages.map((message) => <div id={`message-${message.id}`} key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>{messageContent(message)}</div>)}
+          {earlierMessages.map(messageBubble)}
         </section>
       </details>}
       <section className="chat concept-current" aria-live="polite">
-        {(focusQuestion ? currentMessage ? [currentMessage] : [] : earlierMessages).map((message) => <div id={`message-${message.id}`} key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>{messageContent(message)}</div>)}
+        {(focusQuestion ? currentMessage ? [currentMessage] : [] : earlierMessages).map(messageBubble)}
       </section>
       <ChatAutoScroll latestMessageId={currentMessage?.id} />
     </>}
@@ -81,6 +94,7 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
       messages={session.parentStudySession.sideChatMessages}
       concepts={[session.concept, ...relatedConcepts]}
       action={submitSideQuestion.bind(null, session.id)}
+      feedbackByMessage={feedbackByTarget}
     />}
   </main>;
 }

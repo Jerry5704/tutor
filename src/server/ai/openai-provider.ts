@@ -30,11 +30,15 @@ export class OpenAIProvider implements AIProvider {
       model: this.model,
       latencyMs: Date.now() - started,
       inputTokens: response.usage?.input_tokens,
+      cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens,
       outputTokens: response.usage?.output_tokens,
+      reasoningOutputTokens: response.usage?.output_tokens_details?.reasoning_tokens,
+      totalTokens: response.usage?.total_tokens,
     };
   }
 
   async explainSelection(context: QuickExplanationContext) {
+    const started = Date.now();
     const response = await this.client.responses.parse({
       model: this.model,
       instructions: quickExplanationInstructions(context),
@@ -46,7 +50,17 @@ export class OpenAIProvider implements AIProvider {
       text: { format: zodTextFormat(quickExplanationSchema, "quick_explanation") },
     });
     if (!response.output_parsed) throw new Error("OpenAI returned no structured quick explanation");
-    return response.output_parsed;
+    return {
+      value: response.output_parsed,
+      responseId: response.id,
+      model: this.model,
+      latencyMs: Date.now() - started,
+      inputTokens: response.usage?.input_tokens,
+      cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens,
+      outputTokens: response.usage?.output_tokens,
+      reasoningOutputTokens: response.usage?.output_tokens_details?.reasoning_tokens,
+      totalTokens: response.usage?.total_tokens,
+    };
   }
 
   async assessConcept(context: ConceptTutorContext) {
@@ -69,7 +83,10 @@ export class OpenAIProvider implements AIProvider {
       model: this.model,
       latencyMs: Date.now() - started,
       inputTokens: response.usage?.input_tokens,
+      cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens,
       outputTokens: response.usage?.output_tokens,
+      reasoningOutputTokens: response.usage?.output_tokens_details?.reasoning_tokens,
+      totalTokens: response.usage?.total_tokens,
     };
   }
 
@@ -93,7 +110,10 @@ export class OpenAIProvider implements AIProvider {
       model: this.model,
       latencyMs: Date.now() - started,
       inputTokens: response.usage?.input_tokens,
+      cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens,
       outputTokens: response.usage?.output_tokens,
+      reasoningOutputTokens: response.usage?.output_tokens_details?.reasoning_tokens,
+      totalTokens: response.usage?.total_tokens,
     };
   }
 
@@ -116,7 +136,10 @@ export class OpenAIProvider implements AIProvider {
       model: this.model,
       latencyMs: Date.now() - started,
       inputTokens: response.usage?.input_tokens,
+      cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens,
       outputTokens: response.usage?.output_tokens,
+      reasoningOutputTokens: response.usage?.output_tokens_details?.reasoning_tokens,
+      totalTokens: response.usage?.total_tokens,
     };
   }
 }

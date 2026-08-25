@@ -155,6 +155,21 @@ wyjaśnienia mechanizmu i transferu do nowego kontekstu.
 - Płatne akcje AI mają trwały, współdzielony limit PostgreSQL na ucznia.
   Progi konfiguruje się przez `AI_RATE_LIMIT_PER_10_MINUTES` i
   `AI_RATE_LIMIT_PER_DAY`; odrzucenie nie zmienia mastery ani nie wywołuje API.
+- Każde wywołanie AI zapisuje centralne zdarzenie `AiUsageEvent`: funkcję,
+  model i wersję prompta, status, opóźnienie oraz raportowane przez Responses API
+  tokeny wejściowe, cache, wyjściowe i rozumowania. Rejestr nie zawiera prompta,
+  odpowiedzi ucznia, klucza API ani pełnej odpowiedzi modelu.
+- Szacowany koszt jest wyliczany w chwili wywołania, a użyte stawki zostają przy
+  zdarzeniu do późniejszego audytu. Aktualne stawki konfiguruje się przez
+  `OPENAI_INPUT_USD_PER_1M_TOKENS`, `OPENAI_CACHED_INPUT_USD_PER_1M_TOKENS`
+  i `OPENAI_OUTPUT_USD_PER_1M_TOKENS`. Wartości domyślne dotyczą wyłącznie
+  domyślnego `gpt-5.4-mini`; dla innego modelu należy ustawić wszystkie trzy.
+- `/usage` pokazuje zalogowanemu uczniowi wyłącznie jego zagregowane użycie i
+  koszty według funkcji. Są to szacunki bez podatków, rabatów i korekt faktury.
+- `LearningEvent` zapisuje zdarzenia potrzebne do oceny pilotażu (m.in. start,
+  pauzę, wznowienie, czas odpowiedzi, pytanie poboczne i szybkie wyjaśnienie),
+  ale nie treść wypowiedzi. Pod każdą odpowiedzią tutora uczeń może wskazać
+  „pomogło” albo „nie pomogło”; wybór można później zmienić.
 
 ## Konfiguracja lokalna
 

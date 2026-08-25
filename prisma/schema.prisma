@@ -110,6 +110,43 @@ enum ConceptReviewStatus {
   REJECTED
 }
 
+enum AIUsageFeature {
+  TUTOR_TURN
+  CONCEPT_TUTOR_TURN
+  CONCEPT_GENERATION
+  SIDE_CHAT
+  QUICK_EXPLANATION
+}
+
+enum AIUsageStatus {
+  COMPLETED
+  FAILED
+}
+
+enum TutorFeedbackTarget {
+  STUDY_MESSAGE
+  CONCEPT_MESSAGE
+  SIDE_CHAT_MESSAGE
+}
+
+enum TutorFeedbackRating {
+  HELPFUL
+  NOT_HELPFUL
+}
+
+enum LearningEventType {
+  SESSION_STARTED
+  SESSION_RESUMED
+  SESSION_PAUSED
+  SESSION_COMPLETED
+  ANSWER_SUBMITTED
+  DIAGNOSTIC_SKIPPED
+  SIDE_QUESTION_SUBMITTED
+  QUICK_EXPLANATION_REQUESTED
+  CONCEPT_OPENED
+  TUTOR_FEEDBACK_SUBMITTED
+}
+
 model School {
   id        String   @id @default(cuid())
   name      String
@@ -224,6 +261,7 @@ model LearningObjective {
   conceptEvidence      ConceptEvidence[]
   conceptAssessments   ConceptAssessment[]
   sideChatMessages     SideChatMessage[]
+  learningEvents       LearningEvent[]
 
   @@unique([topicId, order])
 }
@@ -252,6 +290,9 @@ model StudentProfile {
   conceptEvidence ConceptEvidence[]
   conceptSessions ConceptSession[]
   generatedConcepts Concept[] @relation("ConceptCreator")
+  aiUsageEvents AiUsageEvent[]
+  tutorFeedback TutorResponseFeedback[]
+  learningEvents LearningEvent[]
 }
 
 model Enrollment {
@@ -302,6 +343,8 @@ model StudySession {
   objectiveStates    SessionObjectiveState[]
   conceptSessions    ConceptSession[]
   sideChatMessages   SideChatMessage[]
+  aiUsageEvents      AiUsageEvent[]
+  learningEvents     LearningEvent[]
 
   @@index([studentId, unitId, endedAt])
 }
@@ -646,10 +689,77 @@ model ConceptSession {
   parentConceptSession ConceptSession? @relation("ConceptSessionBranches", fields: [parentConceptSessionId], references: [id], onDelete: SetNull)
   childConceptSessions ConceptSession[] @relation("ConceptSessionBranches")
   messages             ConceptMessage[]
+  aiUsageEvents        AiUsageEvent[]
 
   @@index([studentId, status, updatedAt])
   @@index([parentStudySessionId, status])
   @@index([parentConceptSessionId, status])
+}
+
+model AiUsageEvent {
+  id                         String @id @default(cuid())
+  studentId                  String
+  studySessionId             String
+  conceptSessionId           String?
+  feature                    AIUsageFeature
+  status                     AIUsageStatus
+  provider                   String @default("openai")
+  providerResponseId         String? @unique
+  model                      String
+  promptVersion              String
+  latencyMs                  Int
+  inputTokens                Int?
+  cachedInputTokens          Int?
+  outputTokens               Int?
+  reasoningOutputTokens      Int?
+  totalTokens                Int?
+  inputUsdPerMillion         Decimal? @db.Decimal(12, 6)
+  cachedInputUsdPerMillion   Decimal? @db.Decimal(12, 6)
+  outputUsdPerMillion        Decimal? @db.Decimal(12, 6)
+  estimatedCostUsd           Decimal? @db.Decimal(14, 8)
+  errorType                  String?
+  createdAt                  DateTime @default(now())
+  student                    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studySession               StudySession @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
+  conceptSession             ConceptSession? @relation(fields: [conceptSessionId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, createdAt])
+  @@index([studySessionId, feature, createdAt])
+  @@index([feature, status, createdAt])
+  @@map("AIUsageEvent")
+}
+
+model TutorResponseFeedback {
+  id          String @id @default(cuid())
+  studentId   String
+  targetType  TutorFeedbackTarget
+  targetId    String
+  rating      TutorFeedbackRating
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@index([rating, createdAt])
+}
+
+model LearningEvent {
+  id                  String @id @default(cuid())
+  deduplicationKey    String? @unique
+  studentId           String
+  studySessionId      String?
+  learningObjectiveId String?
+  eventType           LearningEventType
+  metadata            Json?
+  createdAt           DateTime @default(now())
+  student             StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studySession        StudySession? @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
+  learningObjective   LearningObjective? @relation(fields: [learningObjectiveId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, eventType, createdAt])
+  @@index([studySessionId, createdAt])
+  @@index([learningObjectiveId, eventType])
 }
 
 model ConceptMessage {

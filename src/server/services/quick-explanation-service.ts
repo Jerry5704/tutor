@@ -2,6 +2,9 @@ import type { ExplanationProvider } from "@/server/ai/contracts";
 import { db } from "@/server/db/client";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
+import { AIUsageService } from "@/server/services/ai-usage-service";
+import { QUICK_EXPLANATION_PROMPT_VERSION } from "@/server/prompts/quick-explanation";
+import { LearningEventService } from "@/server/services/learning-event-service";
 
 function normalized(value: string) {
   return value.trim().replace(/\s+/gu, " ");
@@ -11,6 +14,8 @@ export class QuickExplanationService {
   constructor(
     private readonly provider: ExplanationProvider,
     private readonly knowledge = new KnowledgeService(),
+    private readonly aiUsage = new AIUsageService(),
+    private readonly learningEvents = new LearningEventService(),
   ) {}
 
   async explain(studentId: string, request: {
@@ -23,6 +28,7 @@ export class QuickExplanationService {
     let surroundingMessage: string;
     let objectiveId: string;
     let extraGuidance = "";
+    let studySessionId = request.studySessionId;
 
     if (request.sourceKind === "STUDY_MESSAGE") {
       const message = await db.tutorMessage.findFirst({
@@ -32,6 +38,7 @@ export class QuickExplanationService {
       if (!message) throw new Error("Nie znaleziono wiadomości tutora.");
       surroundingMessage = message.content;
       objectiveId = message.learningObjectiveId ?? message.session.currentObjectiveId ?? "";
+      studySessionId = message.sessionId;
     } else if (request.sourceKind === "CONCEPT_MESSAGE") {
       const message = await db.conceptMessage.findFirst({
         where: { id: request.sourceId, role: "TUTOR", session: { studentId } },
@@ -40,6 +47,7 @@ export class QuickExplanationService {
       if (!message) throw new Error("Nie znaleziono wiadomości podsekcji.");
       surroundingMessage = message.content;
       objectiveId = message.session.concept.objectives[0]?.learningObjectiveId ?? "";
+      studySessionId = message.session.parentStudySessionId;
       extraGuidance = message.session.concept.simpleExplanation;
     } else {
       if (!request.studySessionId) throw new Error("Brak sesji nadrzędnej.");
@@ -66,16 +74,30 @@ export class QuickExplanationService {
 
     if (!normalized(surroundingMessage).includes(sentence)) throw new Error("Zdanie nie należy do wskazanego źródła.");
     if (!objectiveId) throw new Error("Źródło nie ma przypisanego celu nauki.");
+    if (!studySessionId) throw new Error("Źródło nie ma przypisanej sesji nauki.");
     const objective = await db.learningObjective.findUniqueOrThrow({ where: { id: objectiveId } });
     const knowledge = await this.knowledge.retrieveForObjective(objective.id, sentence, 3);
 
-    return this.provider.explainSelection({
+    await this.learningEvents.record({
+      studentId,
+      studySessionId,
+      learningObjectiveId: objective.id,
+      eventType: "QUICK_EXPLANATION_REQUESTED",
+      metadata: { sourceKind: request.sourceKind, characterCount: sentence.length },
+    });
+
+    return this.aiUsage.capture({
+      studentId,
+      studySessionId,
+      feature: "QUICK_EXPLANATION",
+      promptVersion: QUICK_EXPLANATION_PROMPT_VERSION,
+    }, () => this.provider.explainSelection({
       selectedText: sentence,
       surroundingMessage,
       objectiveTitle: objective.title,
       objectiveDescription: objective.description,
       objectiveGuidance: [objective.microExplanation, objective.workedExample, extraGuidance].filter(Boolean).join("\n"),
       knowledge,
-    });
+    }));
   }
 }

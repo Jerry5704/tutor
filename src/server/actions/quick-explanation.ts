@@ -37,7 +37,7 @@ export async function explainSentence(
       student.id,
       parsed.data,
     );
-    return { explanation: result.explanation };
+    return { explanation: result.value.explanation };
   } catch (error) {
     logError("quick_explanation_failed", error, {
       studentId: student.id,

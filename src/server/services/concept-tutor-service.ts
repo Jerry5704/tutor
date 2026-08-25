@@ -7,6 +7,8 @@ import { aggregateConceptMastery } from "@/server/services/concept-evidence-poli
 import { questionFingerprint } from "@/server/services/question-history";
 import { CONCEPT_TUTOR_PROMPT_VERSION } from "@/server/prompts/concept-tutor";
 import { logError, logInfo } from "@/server/observability/logger";
+import { AIUsageService } from "@/server/services/ai-usage-service";
+import { LearningEventService } from "@/server/services/learning-event-service";
 
 
 function targetMastery(assessment: ConceptTurn["assessment"], evidence: ConceptTurn["evidenceLevel"]) {
@@ -21,6 +23,8 @@ export class ConceptTutorService {
   constructor(
     private readonly ai: ConceptAIProvider,
     private readonly knowledge = new KnowledgeService(),
+    private readonly aiUsage = new AIUsageService(),
+    private readonly learningEvents = new LearningEventService(),
   ) {}
 
   private explanation(concept: { shortDefinition: string; simpleExplanation: string; whyItMatters: string; concreteExample: string | null }) {
@@ -75,7 +79,7 @@ export class ConceptTutorService {
       });
     }
     const opening = `${this.explanation(concept)}\n\nNajpierw upewnijmy się, że wyjaśnienie jest jasne. Napisz „dalej”, aby sprawdzić je jednym pytaniem, albo wskaż fragment, który mam wyjaśnić inaczej.`;
-    return db.conceptSession.create({
+    const created = await db.conceptSession.create({
       data: {
         studentId,
         conceptId: concept.id,
@@ -88,6 +92,14 @@ export class ConceptTutorService {
           : [{ role: "TUTOR", content: opening }] },
       },
     });
+    await this.learningEvents.record({
+      studentId,
+      studySessionId: parentStudySessionId,
+      eventType: "CONCEPT_OPENED",
+      metadata: { conceptId: concept.id },
+      deduplicationKey: `concept-opened:${created.id}`,
+    });
+    return created;
   }
 
   async answer(studentId: string, conceptSessionId: string, answer: string, submissionId?: string) {
@@ -132,7 +144,13 @@ export class ConceptTutorService {
       .slice(0, 3);
     const help = explicitlyRequestsHelp(answer);
     const latestTutorQuestion = session.messages.find((message) => message.role === "TUTOR")?.content ?? "";
-    const aiResult = await this.ai.assessConcept({
+    const aiResult = await this.aiUsage.capture({
+      studentId,
+      studySessionId: session.parentStudySessionId,
+      conceptSessionId,
+      feature: "CONCEPT_TUTOR_TURN",
+      promptVersion: CONCEPT_TUTOR_PROMPT_VERSION,
+    }, () => this.ai.assessConcept({
       conceptName: session.concept.name,
       shortDefinition: session.concept.shortDefinition,
       simpleExplanation: session.concept.simpleExplanation,
@@ -146,7 +164,7 @@ export class ConceptTutorService {
       recentMessages: session.messages.toReversed().map((message) => ({ role: message.role, content: message.content })),
       answer,
       helpRequested: help,
-    }).catch((error: unknown) => {
+    })).catch((error: unknown) => {
       logError("concept_tutor_ai_failed", error, {
         studentId,
         conceptSessionId,
@@ -281,6 +299,16 @@ export class ConceptTutorService {
       inputTokens: aiResult.inputTokens,
       outputTokens: aiResult.outputTokens,
     });
+    if (completed) {
+      await this.learningEvents.record({
+        studentId,
+        studySessionId: session.parentStudySessionId,
+        learningObjectiveId: objectiveId,
+        eventType: "SESSION_COMPLETED",
+        metadata: { surface: "CONCEPT_SESSION", conceptId: session.conceptId },
+        deduplicationKey: `concept-completed:${conceptSessionId}`,
+      });
+    }
     return { completed, parentStudySessionId: session.parentStudySessionId, returnToMessageId: session.returnToMessageId, parentConceptSessionId: session.parentConceptSessionId };
   }
 
