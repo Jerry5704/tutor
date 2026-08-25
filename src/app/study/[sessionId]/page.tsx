@@ -14,11 +14,12 @@ import { visibleConceptsFor } from "@/server/services/concept-visibility";
 import { sessionAcceptsInput } from "@/server/services/session-lifecycle-policy";
 import { conceptMentions } from "@/server/services/concept-mentions";
 import { StudentModelService } from "@/server/services/student-model-service";
-import { beginPractice, openConceptMention, pauseStudySession, resetUnitProgress, skipDiagnostic, submitAnswer, submitSideQuestion } from "./actions";
+import { sessionProgressSummary } from "@/server/services/session-progress-summary";
+import { beginPractice, openConceptMention, pauseStudySession, resetUnitProgress, resumeStudySession, skipDiagnostic, submitAnswer, submitSideQuestion } from "./actions";
 
-export default async function Study({ params, searchParams }: { params: Promise<{ sessionId: string }>; searchParams: Promise<{ conceptUnavailable?: string }> }) {
+export default async function Study({ params, searchParams }: { params: Promise<{ sessionId: string }>; searchParams: Promise<{ conceptUnavailable?: string; summary?: string }> }) {
   const { sessionId } = await params;
-  const { conceptUnavailable } = await searchParams;
+  const { conceptUnavailable, summary } = await searchParams;
   const student = await requireStudent();
   const session = await db.studySession.findFirst({
     where: { id: sessionId, studentId: student.id },
@@ -33,6 +34,57 @@ export default async function Study({ params, searchParams }: { params: Promise<
     },
   });
   if (!session) notFound();
+  const objectives = session.objectiveStates.map(({ learningObjective }) => learningObjective);
+  const studentModel = new StudentModelService();
+  const showPausedSummary = summary === "paused" && session.pausedAt !== null && session.endedAt === null;
+
+  if (showPausedSummary) {
+    const mastery = await studentModel.masteryMap(student.id, objectives.map((objective) => objective.id));
+    const progress = sessionProgressSummary(session.objectiveStates.map((state) => ({
+      id: state.learningObjective.id,
+      title: state.learningObjective.title,
+      status: state.status,
+      mastery: mastery.get(state.learningObjective.id)?.mastery ?? 0,
+    })));
+    const readiness = await studentModel.readiness(student.id, objectives);
+
+    return <main className="narrow pause-summary-page">
+      <section className="card pause-summary">
+        <p className="eyebrow">Postęp zapisany</p>
+        <h1>Na dziś wystarczy</h1>
+        <p className="muted">Wrócisz dokładnie do tego miejsca. Gotowość pokazuje aktualne opanowanie całego działu, a nie przewidywaną ocenę.</p>
+        <div className="pause-summary-readiness"><strong>{readiness}%</strong><span>gotowości do sprawdzianu</span></div>
+        <div className="progress" role="progressbar" aria-label="Gotowość do sprawdzianu" aria-valuenow={readiness} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${readiness}%` }} /></div>
+
+        <div className="pause-summary-groups">
+          <section>
+            <h2>Już opanowane</h2>
+            {progress.mastered.length > 0
+              ? <ul>{progress.mastered.map((item) => <li className="summary-mastered" key={item.id}><span>✓ {item.title}</span><strong>{item.masteryPercent}%</strong></li>)}</ul>
+              : <p className="muted">Jeszcze nic nie jest w pełni potwierdzone — to normalne na początku działu.</p>}
+          </section>
+          <section>
+            <h2>W trakcie nauki</h2>
+            {progress.developing.length > 0
+              ? <ul>{progress.developing.map((item) => <li className="summary-developing" key={item.id}><span>• {item.title}</span><strong>{item.masteryPercent}%</strong></li>)}</ul>
+              : <p className="muted">Nie ma teraz częściowo rozpoczętych zagadnień.</p>}
+          </section>
+          <section>
+            <h2>Pozostało do zrobienia</h2>
+            {progress.remaining.length > 0
+              ? <ul>{progress.remaining.map((item) => <li className="summary-remaining" key={item.id}><span>! {item.title}</span><strong>{item.masteryPercent}%</strong></li>)}</ul>
+              : <p className="muted">Wszystkie zagadnienia zostały już rozpoczęte.</p>}
+          </section>
+        </div>
+
+        <div className="row pause-summary-actions">
+          <form action={resumeStudySession.bind(null, session.id)}><button type="submit" className="button">Kontynuuj naukę</button></form>
+          <Link className="button secondary" href="/dashboard">Wróć do dashboardu</Link>
+        </div>
+      </section>
+    </main>;
+  }
+
   const concepts = await db.concept.findMany({
     where: {
       active: true,
@@ -54,7 +106,7 @@ export default async function Study({ params, searchParams }: { params: Promise<
   const earlierMessages = focusQuestion ? session.messages.slice(0, -1) : session.messages;
   const latestVisualMessageId = latestMessage?.showVisual ? latestMessage.id : undefined;
   const completionReadiness = session.phase === "COMPLETED"
-    ? await new StudentModelService().readiness(student.id, session.objectiveStates.map(({ learningObjective }) => learningObjective))
+    ? await studentModel.readiness(student.id, objectives)
     : undefined;
 
   const renderMessage = (message: (typeof session.messages)[number]) => <div id={`message-${message.id}`} key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>

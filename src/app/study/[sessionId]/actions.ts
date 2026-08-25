@@ -91,7 +91,16 @@ export async function pauseStudySession(sessionId: string) {
       data: { status: "PAUSED" },
     }),
   ]);
-  redirect("/dashboard");
+  redirect(`/study/${sessionId}?summary=paused`);
+}
+
+export async function resumeStudySession(sessionId: string) {
+  const student = await requireStudent();
+  await db.studySession.update({
+    where: { id: sessionId, studentId: student.id, endedAt: null, pausedAt: { not: null } },
+    data: { pausedAt: null },
+  });
+  redirect(`/study/${sessionId}`);
 }
 
 export async function resetUnitProgress(sessionId: string) {
