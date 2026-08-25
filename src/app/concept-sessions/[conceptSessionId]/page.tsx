@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnswerForm } from "@/components/answer-form";
+import { ChatAutoScroll } from "@/components/chat-auto-scroll";
 import { ConceptText } from "@/components/concept-text";
 import { SideChat } from "@/components/side-chat";
 import { requireStudent } from "@/server/auth/session";
@@ -63,12 +64,13 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
       {focusQuestion && earlierMessages.length > 0 && <details className="concept-history">
         <summary>Pokaż wcześniejsze wyjaśnienie i rozmowę</summary>
         <section className="chat compact">
-          {earlierMessages.map((message) => <div key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>{messageContent(message)}</div>)}
+          {earlierMessages.map((message) => <div id={`message-${message.id}`} key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>{messageContent(message)}</div>)}
         </section>
       </details>}
       <section className="chat concept-current" aria-live="polite">
-        {(focusQuestion ? currentMessage ? [currentMessage] : [] : earlierMessages).map((message) => <div key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>{messageContent(message)}</div>)}
+        {(focusQuestion ? currentMessage ? [currentMessage] : [] : earlierMessages).map((message) => <div id={`message-${message.id}`} key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>{messageContent(message)}</div>)}
       </section>
+      <ChatAutoScroll latestMessageId={currentMessage?.id} />
     </>}
     {session.status === "ACTIVE" && <>
       <AnswerForm action={submitConceptAnswer.bind(null, session.id)} />

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnswerForm } from "@/components/answer-form";
+import { ChatAutoScroll } from "@/components/chat-auto-scroll";
 import { ConceptDiagram } from "@/components/concept-diagram";
 import { ConceptMap } from "@/components/concept-map";
 import { ConceptText } from "@/components/concept-text";
@@ -76,6 +77,7 @@ export default async function Study({ params, searchParams }: { params: Promise<
     <section className={`chat ${focusQuestion ? "concept-current" : ""}`} aria-live="polite">
       {(focusQuestion ? latestMessage ? [latestMessage] : [] : earlierMessages).map(renderMessage)}
     </section>
+    <ChatAutoScroll latestMessageId={latestMessage?.id} />
     {sessionAcceptsInput(session) && <>
       {awaitingPractice
         ? <form action={beginPractice.bind(null, session.id)}><button type="submit" className="button">Rozumiem — sprawdź mnie bez podpowiedzi</button></form>
