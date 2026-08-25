@@ -105,7 +105,12 @@ npm run ocr:setup
 npm run ocr:unit-1
 npm run db:seed:unit-1
 npm run db:ingest:unit-1
+npm run db:seed:quick-unit
 ```
+
+`db:seed:quick-unit` dodaje jako dział 2 krótki, dwucelowy zakres testowy z
+początku rozdziału „Genetyka klasyczna” (strony 66–74). Zawiera kontrolowane
+opracowanie źródłowe do RAG i służy do szybkiego przejścia pełnej ścieżki nauki.
 
 Każda strona trafia do osobnego pliku tekstowego w
 `materials/derived/biologia-na-czasie-4/unit-1/pages`. `manifest.json` zachowuje

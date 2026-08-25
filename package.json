@@ -16,6 +16,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:unit-1": "tsx prisma/seed-unit-1.ts",
+    "db:seed:quick-unit": "tsx prisma/seed-quick-test-unit.ts",
     "db:seed:unit-1-concepts": "tsx prisma/seed-unit-1-concepts.ts",
     "db:ingest:unit-1": "tsx prisma/ingest-unit-1-source.ts",
     "ocr:setup": "bash scripts/setup-local-ocr.sh",
