@@ -708,7 +708,7 @@ export class TutorService {
         } else {
           phase = "COMPLETED";
           endedAt = new Date();
-          tutorMessage = `${result.turn.feedback}\n\nNa dziś wszystkie cele tego działu mają potwierdzone opanowanie. Gotowość jest wskaźnikiem mastery, nie gwarancją oceny.`;
+          tutorMessage = `${result.turn.feedback}\n\nDział ukończony. Wszystkie cele zostały potwierdzone zadaniami transferowymi. Poniżej znajdziesz podsumowanie gotowości i opanowanych umiejętności.`;
           questionIntent = undefined;
           messageQuestionFingerprint = undefined;
         }

@@ -1,4 +1,5 @@
 import { db } from "@/server/db/client";
+import { weightedReadiness } from "@/server/services/readiness-policy";
 
 export class StudentModelService {
   async masteryMap(studentId: string, objectiveIds: string[]) {
@@ -9,9 +10,10 @@ export class StudentModelService {
   async readiness(studentId: string, objectives: { id: string; importance: number }[]) {
     if (!objectives.length) return 0;
     const mastery = await this.masteryMap(studentId, objectives.map((item) => item.id));
-    const weights = objectives.reduce((sum, item) => sum + item.importance, 0);
-    const score = objectives.reduce((sum, item) => sum + (mastery.get(item.id)?.mastery ?? 0) * item.importance, 0);
-    return Math.round((score / weights) * 100);
+    return weightedReadiness(objectives.map((objective) => ({
+      importance: objective.importance,
+      mastery: mastery.get(objective.id)?.mastery ?? 0,
+    })));
   }
 
   async mastery(studentId: string, objectiveId: string) {

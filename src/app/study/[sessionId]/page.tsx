@@ -13,6 +13,7 @@ import { annotateConceptText } from "@/server/services/concept-annotation";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
 import { sessionAcceptsInput } from "@/server/services/session-lifecycle-policy";
 import { conceptMentions } from "@/server/services/concept-mentions";
+import { StudentModelService } from "@/server/services/student-model-service";
 import { beginPractice, openConceptMention, pauseStudySession, resetUnitProgress, skipDiagnostic, submitAnswer, submitSideQuestion } from "./actions";
 
 export default async function Study({ params, searchParams }: { params: Promise<{ sessionId: string }>; searchParams: Promise<{ conceptUnavailable?: string }> }) {
@@ -23,7 +24,7 @@ export default async function Study({ params, searchParams }: { params: Promise<
     where: { id: sessionId, studentId: student.id },
     include: {
       unit: { include: { course: true } },
-      objectiveStates: true,
+      objectiveStates: { include: { learningObjective: true } },
       messages: {
         orderBy: { createdAt: "asc" },
         include: { learningObjective: true, knowledgeAsset: true },
@@ -52,6 +53,9 @@ export default async function Study({ params, searchParams }: { params: Promise<
   const latestMessage = session.messages.at(-1);
   const earlierMessages = focusQuestion ? session.messages.slice(0, -1) : session.messages;
   const latestVisualMessageId = latestMessage?.showVisual ? latestMessage.id : undefined;
+  const completionReadiness = session.phase === "COMPLETED"
+    ? await new StudentModelService().readiness(student.id, session.objectiveStates.map(({ learningObjective }) => learningObjective))
+    : undefined;
 
   const renderMessage = (message: (typeof session.messages)[number]) => <div id={`message-${message.id}`} key={message.id} className={`bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>
     <ConceptText
@@ -78,6 +82,15 @@ export default async function Study({ params, searchParams }: { params: Promise<
       {(focusQuestion ? latestMessage ? [latestMessage] : [] : earlierMessages).map(renderMessage)}
     </section>
     <ChatAutoScroll latestMessageId={latestMessage?.id} />
+    {completionReadiness !== undefined && <section className="card unit-result">
+      <p className="eyebrow">Dział ukończony</p>
+      <h2>Gotowość do sprawdzianu: {completionReadiness}%</h2>
+      <p className="muted">To wskaźnik aktualnego opanowania materiału, a nie gwarancja oceny. Każdy poniższy cel został potwierdzony zadaniem transferowym.</p>
+      <ul>{session.objectiveStates
+        .filter((state) => state.status === "MASTERED")
+        .map((state) => <li key={state.learningObjectiveId}>✓ {state.learningObjective.title}</li>)}</ul>
+      <Link className="button" href="/dashboard">Wróć do dashboardu</Link>
+    </section>}
     {sessionAcceptsInput(session) && <>
       {awaitingPractice
         ? <form action={beginPractice.bind(null, session.id)}><button type="submit" className="button">Rozumiem — sprawdź mnie bez podpowiedzi</button></form>
