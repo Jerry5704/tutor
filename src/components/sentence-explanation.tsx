@@ -43,10 +43,6 @@ export function SentenceExplanation({ children, sentence, source }: {
     });
   }
 
-  const rect = open ? targetRef.current?.getBoundingClientRect() : undefined;
-  const left = rect ? Math.min(Math.max(16, rect.left + rect.width / 2), window.innerWidth - 16) : 0;
-  const top = rect ? Math.max(16, rect.top - 8) : 0;
-
   return <>
     {/* biome-ignore lint/a11y/useSemanticElements: A button cannot legally contain the nested concept links rendered inside this sentence. */}
     <span
@@ -60,7 +56,7 @@ export function SentenceExplanation({ children, sentence, source }: {
         if (event.key === "Enter" || event.key === " ") requestExplanation(event as unknown as React.MouseEvent<HTMLSpanElement>);
       }}
     >{children}</span>
-    {open && <span ref={popupRef} className="sentence-explanation" style={{ left, top }}>
+    {open && <span ref={popupRef} className="sentence-explanation">
       <span className="sentence-explanation-card" role="dialog" aria-label="Głębsze wyjaśnienie zdania">
         <strong>Głębsze wyjaśnienie</strong>
         <q>{sentence.trim()}</q>
