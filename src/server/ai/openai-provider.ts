@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
-import type { AIProvider, ConceptGenerationContext, ConceptTutorContext, QuickExplanationContext, SideChatContext, TutorContext } from "@/server/ai/contracts";
-import { conceptTurnSchema, generatedConceptSchema, quickExplanationSchema, sideChatAnswerSchema, tutorTurnSchema } from "@/server/ai/contracts";
+import type { AIProvider, ConceptGenerationContext, ConceptTutorContext, QuickExplanationContext, SideChatContext, TestScopeContext, TutorContext } from "@/server/ai/contracts";
+import { conceptTurnSchema, generatedConceptSchema, quickExplanationSchema, sideChatAnswerSchema, testScopeInterpretationSchema, tutorTurnSchema } from "@/server/ai/contracts";
 import { quickExplanationInstructions } from "@/server/prompts/quick-explanation";
 import { tutorInstructions } from "@/server/prompts/tutor";
 import { conceptTutorInstructions } from "@/server/prompts/concept-tutor";
@@ -9,6 +9,7 @@ import { conceptGenerationInstructions } from "@/server/prompts/concept-generati
 import { openAIConfig } from "@/server/config/env";
 import { sideChatInstructions } from "@/server/prompts/side-chat";
 import { tutorRequestInput } from "@/server/ai/tutor-request-input";
+import { testScopeInstructions } from "@/server/prompts/test-scope";
 
 export class OpenAIProvider implements AIProvider {
   private readonly config = openAIConfig();
@@ -130,6 +131,28 @@ export class OpenAIProvider implements AIProvider {
       text: { format: zodTextFormat(sideChatAnswerSchema, "side_chat_answer") },
     });
     if (!response.output_parsed) throw new Error("OpenAI returned no structured side-chat answer");
+    return {
+      value: response.output_parsed,
+      responseId: response.id,
+      model: this.model,
+      latencyMs: Date.now() - started,
+      inputTokens: response.usage?.input_tokens,
+      cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens,
+      outputTokens: response.usage?.output_tokens,
+      reasoningOutputTokens: response.usage?.output_tokens_details?.reasoning_tokens,
+      totalTokens: response.usage?.total_tokens,
+    };
+  }
+
+  async interpretTestScope(context: TestScopeContext) {
+    const started = Date.now();
+    const response = await this.client.responses.parse({
+      model: this.model,
+      instructions: testScopeInstructions,
+      input: JSON.stringify(context),
+      text: { format: zodTextFormat(testScopeInterpretationSchema, "test_scope_interpretation") },
+    });
+    if (!response.output_parsed) throw new Error("OpenAI returned no structured test scope interpretation");
     return {
       value: response.output_parsed,
       responseId: response.id,

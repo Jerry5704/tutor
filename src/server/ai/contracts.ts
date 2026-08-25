@@ -68,6 +68,28 @@ export interface AIResult {
 
 export interface AIProvider extends ExplanationProvider, ConceptAIProvider, SideChatAIProvider {
   assessAndRespond(context: TutorContext): Promise<AIResult>;
+  interpretTestScope(context: TestScopeContext): Promise<ConceptAIResult<TestScopeInterpretation>>;
+}
+
+export const testScopeInterpretationSchema = z.object({
+  summary: z.string().min(1).max(1200),
+  expectedTaskTypes: z.array(z.string().min(1).max(120)).max(8),
+  pageRanges: z.array(z.object({
+    from: z.number().int().min(1).max(5000),
+    to: z.number().int().min(1).max(5000),
+  })).max(10),
+  objectiveRecommendations: z.array(z.object({
+    objectiveCode: z.string().min(1).max(100),
+    scope: z.enum(["INCLUDED", "EXCLUDED", "PRIORITY"]),
+    reason: z.string().min(1).max(300),
+  })).max(100),
+});
+
+export type TestScopeInterpretation = z.infer<typeof testScopeInterpretationSchema>;
+
+export interface TestScopeContext {
+  teacherNote: string;
+  objectives: Array<{ code: string; topicTitle: string; title: string; description: string }>;
 }
 
 export const sideChatAnswerSchema = z.object({

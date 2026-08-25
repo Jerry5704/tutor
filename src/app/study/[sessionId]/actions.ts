@@ -143,6 +143,10 @@ export async function resetUnitProgress(sessionId: string) {
     select: { conceptId: true },
   });
   const conceptIds = uniqueConceptIds(conceptLinks);
+  const confirmedPlan = await db.testPlan.findFirst({
+    where: { studentId: student.id, unitId: previous.unitId, status: "CONFIRMED" },
+    select: { id: true },
+  });
   await db.$transaction([
     db.studySession.update({ where: { id: previous.id }, data: { phase: "COMPLETED", pausedAt: null, endedAt: new Date() } }),
     db.studentMastery.updateMany({
@@ -160,10 +164,7 @@ export async function resetUnitProgress(sessionId: string) {
       data: { status: "RESET", endedAt: new Date() },
     }),
   ]);
-  const session = await new TutorService(new OpenAIProvider()).start(
-    student.id,
-    previous.unitId,
-    previous.teacherScopeNote?.content,
-  );
+  if (!confirmedPlan) redirect(`/units/${previous.unitId}`);
+  const session = await new TutorService(new OpenAIProvider()).start(student.id, previous.unitId);
   redirect(`/study/${session.id}`);
 }

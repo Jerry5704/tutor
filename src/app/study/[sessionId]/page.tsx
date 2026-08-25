@@ -32,10 +32,15 @@ export default async function Study({ params, searchParams }: { params: Promise<
         include: { learningObjective: true, knowledgeAsset: true },
       },
       sideChatMessages: { orderBy: { createdAt: "desc" }, take: 30, include: { linkedConcept: true } },
+      testPlan: { include: { objectives: true } },
     },
   });
   if (!session) notFound();
-  const objectives = session.objectiveStates.map(({ learningObjective }) => learningObjective);
+  const planScope = new Map(session.testPlan?.objectives.map((item) => [item.learningObjectiveId, item.confirmedScope]) ?? []);
+  const objectives = session.objectiveStates.map(({ learningObjective }) => ({
+    ...learningObjective,
+    importance: learningObjective.importance * (planScope.get(learningObjective.id) === "PRIORITY" ? 1.5 : 1),
+  }));
   const studentModel = new StudentModelService();
   const feedbackTargetIds = [
     ...session.messages.filter((message) => message.role === "TUTOR").map((message) => message.id),

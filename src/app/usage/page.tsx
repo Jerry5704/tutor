@@ -8,6 +8,7 @@ const featureLabels = {
   CONCEPT_GENERATION: "Tworzenie karty pojęcia",
   SIDE_CHAT: "Pytanie poboczne",
   QUICK_EXPLANATION: "Szybkie wyjaśnienie zdania",
+  TEST_SCOPE_PARSING: "Interpretacja zakresu sprawdzianu",
 } as const;
 
 function money(value: number) {

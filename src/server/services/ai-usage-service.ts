@@ -16,7 +16,7 @@ type UsageResult = {
 
 type CaptureContext = {
   studentId: string;
-  studySessionId: string;
+  studySessionId?: string;
   conceptSessionId?: string;
   feature: AIUsageFeature;
   promptVersion: string;

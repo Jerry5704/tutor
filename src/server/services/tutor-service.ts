@@ -4,6 +4,7 @@ import { db } from "@/server/db/client";
 import { AssessmentService } from "@/server/services/assessment-service";
 import { AIUsageService } from "@/server/services/ai-usage-service";
 import { LearningEventService } from "@/server/services/learning-event-service";
+import { objectivesInTestScope } from "@/server/services/test-plan-policy";
 import { CurriculumService } from "@/server/services/curriculum-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { ConceptProgressService } from "@/server/services/concept-progress-service";
@@ -50,6 +51,12 @@ type Objective = {
   importance: number;
 };
 
+type ScopedPlan = {
+  id: string;
+  originalTeacherNote: string | null;
+  objectives: Array<{ learningObjectiveId: string; confirmedScope: "INCLUDED" | "EXCLUDED" | "PRIORITY" | null }>;
+};
+
 function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
@@ -81,8 +88,10 @@ export class TutorService {
     private readonly learningEvents = new LearningEventService(),
   ) {}
 
-  private objectives(unit: Awaited<ReturnType<CurriculumService["getUnitForStudent"]>>) {
-    return unit.topics.flatMap((topic) => topic.objectives) as Objective[];
+  private objectives(unit: Awaited<ReturnType<CurriculumService["getUnitForStudent"]>>, plan?: ScopedPlan | null) {
+    const objectives = unit.topics.flatMap((topic) => topic.objectives) as Objective[];
+    if (!plan) return objectives;
+    return objectivesInTestScope(objectives, plan.objectives);
   }
 
   private async ensureObjectiveStates(sessionId: string, objectiveIds: string[], currentObjectiveId: string) {
@@ -99,10 +108,11 @@ export class TutorService {
   async skipRemainingDiagnostic(studentId: string, sessionId: string, studentMessage?: string) {
     const session = await db.studySession.findFirstOrThrow({
       where: { id: sessionId, studentId, endedAt: null, pausedAt: null },
+      include: { testPlan: { include: { objectives: true } } },
     });
     if (session.phase !== "DIAGNOSTIC") return;
     const unit = await this.curriculum.getUnitForStudent(session.unitId, studentId);
-    const objectives = this.objectives(unit);
+    const objectives = this.objectives(unit, session.testPlan);
     const firstObjective = objectives[0];
     if (!firstObjective) throw new Error("Unit has no learning objectives");
     await this.ensureObjectiveStates(session.id, objectives.map((item) => item.id), firstObjective.id);
@@ -293,15 +303,24 @@ export class TutorService {
     }
 
     const unit = await this.curriculum.getUnitForStudent(unitId, studentId);
-    const objectives = this.objectives(unit);
+    const testPlan = await db.testPlan.findFirst({
+      where: { studentId, unitId, status: "CONFIRMED" },
+      orderBy: { confirmedAt: "desc" },
+      include: { objectives: true },
+    });
+    if (!testPlan) throw new Error("Najpierw zatwierdź zakres sprawdzianu.");
+    const objectives = this.objectives(unit, testPlan);
     const objective = objectives[0];
     if (!objective) throw new Error("Unit has no learning objectives");
 
     const session = await db.studySession.create({ data: {
       studentId,
       unitId,
+      testPlanId: testPlan.id,
       currentObjectiveId: objective.id,
-      teacherScopeNote: teacherNote?.trim() ? { create: { content: teacherNote.trim() } } : undefined,
+      teacherScopeNote: (testPlan.originalTeacherNote || teacherNote?.trim())
+        ? { create: { content: testPlan.originalTeacherNote || teacherNote?.trim() || "" } }
+        : undefined,
       messages: { create: {
         role: "TUTOR",
         content: `Zanim zaczniemy naukę, sprawdźmy cały dział. Zaczynamy od zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — zapiszę to jako zagadnienie do nauki.`,
@@ -324,12 +343,12 @@ export class TutorService {
   async answer(studentId: string, sessionId: string, content: string, submissionId?: string) {
     const session = await db.studySession.findFirstOrThrow({
       where: { id: sessionId, studentId, endedAt: null, pausedAt: null },
-      include: { teacherScopeNote: true, messages: { orderBy: { createdAt: "desc" }, take: 8 } },
+      include: { teacherScopeNote: true, testPlan: { include: { objectives: true } }, messages: { orderBy: { createdAt: "desc" }, take: 8 } },
     });
     if (!session.currentObjectiveId) throw new Error("Session has no current objective");
 
     const unit = await this.curriculum.getUnitForStudent(session.unitId, studentId);
-    const objectives = this.objectives(unit);
+    const objectives = this.objectives(unit, session.testPlan);
     await this.ensureObjectiveStates(session.id, objectives.map((item) => item.id), session.currentObjectiveId);
     const objective = objectives.find((item) => item.id === session.currentObjectiveId);
     if (!objective) throw new Error("Current objective is outside the unit curriculum");
@@ -456,7 +475,12 @@ export class TutorService {
       clarificationRequest,
       currentQuestion,
       questionRequiresExplanation: questionRequiresExplanation(currentQuestion),
-      teacherScopeNote: session.teacherScopeNote?.content,
+      teacherScopeNote: [
+        session.teacherScopeNote?.content,
+        session.testPlan && stringArray(session.testPlan.expectedTaskTypes).length
+          ? `Spodziewane typy zadań: ${stringArray(session.testPlan.expectedTaskTypes).join(", ")}`
+          : undefined,
+      ].filter(Boolean).join("\n") || undefined,
       knowledge,
       recentMessages: session.messages.toReversed().map(({ role, content: text }) => ({ role, content: text })),
       answer: content,

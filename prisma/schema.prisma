@@ -116,6 +116,7 @@ enum AIUsageFeature {
   CONCEPT_GENERATION
   SIDE_CHAT
   QUICK_EXPLANATION
+  TEST_SCOPE_PARSING
 }
 
 enum AIUsageStatus {
@@ -145,6 +146,26 @@ enum LearningEventType {
   QUICK_EXPLANATION_REQUESTED
   CONCEPT_OPENED
   TUTOR_FEEDBACK_SUBMITTED
+  TEST_PLAN_DRAFTED
+  TEST_PLAN_CONFIRMED
+}
+
+enum TestPlanStatus {
+  DRAFT
+  CONFIRMED
+  ARCHIVED
+}
+
+enum TestObjectiveScope {
+  INCLUDED
+  EXCLUDED
+  PRIORITY
+}
+
+enum TestObjectiveScopeSource {
+  CURRICULUM
+  AI_SUGGESTION
+  STUDENT_CONFIRMED
 }
 
 model School {
@@ -214,6 +235,7 @@ model Unit {
   topics      Topic[]
   sessions    StudySession[]
   sourceLinks KnowledgeSourceUnit[]
+  testPlans   TestPlan[]
 
   @@unique([courseId, slug])
   @@unique([courseId, order])
@@ -262,6 +284,7 @@ model LearningObjective {
   conceptAssessments   ConceptAssessment[]
   sideChatMessages     SideChatMessage[]
   learningEvents       LearningEvent[]
+  testPlanObjectives   TestPlanObjective[]
 
   @@unique([topicId, order])
 }
@@ -293,6 +316,7 @@ model StudentProfile {
   aiUsageEvents AiUsageEvent[]
   tutorFeedback TutorResponseFeedback[]
   learningEvents LearningEvent[]
+  testPlans TestPlan[]
 }
 
 model Enrollment {
@@ -345,8 +369,48 @@ model StudySession {
   sideChatMessages   SideChatMessage[]
   aiUsageEvents      AiUsageEvent[]
   learningEvents     LearningEvent[]
+  testPlanId         String?
+  testPlan           TestPlan? @relation(fields: [testPlanId], references: [id], onDelete: SetNull)
 
   @@index([studentId, unitId, endedAt])
+  @@index([testPlanId])
+}
+
+model TestPlan {
+  id                    String @id @default(cuid())
+  studentId             String
+  unitId                String
+  status                TestPlanStatus @default(DRAFT)
+  testDate              DateTime
+  dailyMinutes          Int
+  originalTeacherNote   String?
+  interpretationSummary String?
+  expectedTaskTypes     Json @default("[]")
+  declaredPageRanges    Json @default("[]")
+  confirmedAt           DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  student               StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  unit                  Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  objectives            TestPlanObjective[]
+  sessions              StudySession[]
+
+  @@index([studentId, unitId, status, updatedAt])
+  @@index([testDate, status])
+}
+
+model TestPlanObjective {
+  testPlanId           String
+  learningObjectiveId  String
+  suggestedScope       TestObjectiveScope
+  confirmedScope       TestObjectiveScope?
+  source               TestObjectiveScopeSource
+  reason               String?
+  testPlan             TestPlan @relation(fields: [testPlanId], references: [id], onDelete: Cascade)
+  learningObjective    LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+
+  @@id([testPlanId, learningObjectiveId])
+  @@index([learningObjectiveId, confirmedScope])
 }
 
 model SessionObjectiveState {
@@ -699,7 +763,7 @@ model ConceptSession {
 model AiUsageEvent {
   id                         String @id @default(cuid())
   studentId                  String
-  studySessionId             String
+  studySessionId             String?
   conceptSessionId           String?
   feature                    AIUsageFeature
   status                     AIUsageStatus
@@ -720,7 +784,7 @@ model AiUsageEvent {
   errorType                  String?
   createdAt                  DateTime @default(now())
   student                    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  studySession               StudySession @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
+  studySession               StudySession? @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
   conceptSession             ConceptSession? @relation(fields: [conceptSessionId], references: [id], onDelete: SetNull)
 
   @@index([studentId, createdAt])

@@ -128,6 +128,21 @@ mapowany na jawnie dozwolony plik (bez ścieżki podanej przez użytkownika), a
 odpowiedź ma prywatny cache. Wdrożenie publiczne wymaga potwierdzenia praw do
 redystrybucji ilustracji albo zastąpienia ich własnymi diagramami.
 
+## Strukturalny plan sprawdzianu
+
+Nowa sesja wymaga zatwierdzonego `TestPlan`. Uczeń podaje datę sprawdzianu,
+dostępny czas dzienny i opcjonalną notatkę nauczyciela. Model może zwrócić tylko
+strukturalną sugestię dla kodów `LearningObjective` przekazanych z curriculum;
+nieznane kody są ignorowane, a niejednoznaczność nie wyklucza materiału.
+
+Na ekranie przeglądu uczeń jawnie zatwierdza każdy cel jako `INCLUDED`,
+`PRIORITY` albo `EXCLUDED`. Dopiero `confirmedScope` wpływa na diagnostykę,
+kolejność nauki i gotowość do danego sprawdzianu. `EXCLUDED` nie usuwa celu z
+curriculum, ogólnego mastery działu ani przyszłego profilu maturalnego.
+Dashboard pokazuje osobno gotowość do zatwierdzonego zakresu i mastery całego
+działu. Sesja zachowuje `testPlanId`, więc późniejsza zmiana planu nie zmienia
+historycznego kontekstu już przeprowadzonej nauki.
+
 ## Pedagogiczna maszyna stanów
 
 1. `DIAGNOSTIC`: samodzielne wyjaśnienie obejmujące cele działu; znany cel jest
