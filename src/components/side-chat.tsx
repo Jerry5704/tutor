@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ConceptText } from "@/components/concept-text";
 import { SideQuestionForm } from "@/components/side-question-form";
 import { annotateConceptText, type AnnotatableConcept } from "@/server/services/concept-annotation";
+import { plainTutorText } from "@/server/services/plain-tutor-text";
 
 type SideMessage = {
   id: string;
@@ -24,7 +25,7 @@ export function SideChat({ sessionId, messages, concepts, action }: {
       <header><div><p className="eyebrow">Bez przerywania nauki</p><h2>Dopytaj tutora</h2></div><small className="muted">Wątek zapisuje się z tą sesją.</small></header>
       {ordered.length > 0
         ? <div className="side-chat-log" aria-live="polite">{ordered.map((message) => <div key={message.id} className={`side-chat-bubble ${message.role === "TUTOR" ? "tutor" : "student"}`}>
-          <ConceptText sessionId={sessionId} segments={annotateConceptText(message.content, concepts)} />
+          <ConceptText sessionId={sessionId} segments={annotateConceptText(plainTutorText(message.content), concepts)} />
           {message.linkedConcept && <Link className="side-chat-concept-link" href={`/study/${sessionId}/concepts/${message.linkedConcept.slug}`}>Otwórz kartę: {message.linkedConcept.name} →</Link>}
         </div>)}</div>
         : <p className="muted side-chat-empty">Zapytaj o termin lub fragment biologii, którego teraz nie rozumiesz.</p>}

@@ -6,6 +6,7 @@ import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
 import { ConceptDiscoveryService } from "@/server/services/concept-discovery-service";
 import { ConceptIntentService } from "@/server/services/concept-intent-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
+import { plainTutorText } from "@/server/services/plain-tutor-text";
 
 const RATE_LIMIT_MESSAGE = "Na chwilę zatrzymuję nowe odpowiedzi AI, ponieważ wysłano ich dużo w krótkim czasie. Wróć do tego pytania za kilka minut.";
 const NO_SOURCE_MESSAGE = "Nie mam teraz wystarczającego fragmentu zatwierdzonych materiałów, żeby odpowiedzieć na to rzetelnie. Nie chcę zgadywać — możesz wrócić do tego pytania później.";
@@ -119,7 +120,7 @@ export class SideChatService {
           data: {
             studySessionId,
             role: "TUTOR",
-            content: result.value.answer,
+            content: plainTutorText(result.value.answer),
             learningObjectiveId: objective.id,
             sourceLocators: acceptedLocators,
             providerResponseId: result.responseId,
