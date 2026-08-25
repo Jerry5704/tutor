@@ -8,18 +8,7 @@ import { conceptTutorInstructions } from "@/server/prompts/concept-tutor";
 import { conceptGenerationInstructions } from "@/server/prompts/concept-generation";
 import { openAIConfig } from "@/server/config/env";
 import { sideChatInstructions } from "@/server/prompts/side-chat";
-
-export function tutorRequestInput(context: TutorContext) {
-  return {
-    phase: context.phase,
-    objective: { code: context.objectiveCode, description: context.objectiveDescription },
-    teacherScopeNote: context.teacherScopeNote ?? null,
-    clarificationRequest: context.clarificationRequest,
-    approvedKnowledge: context.knowledge,
-    recentConversation: context.recentMessages,
-    studentAnswer: context.answer,
-  };
-}
+import { tutorRequestInput } from "@/server/ai/tutor-request-input";
 
 export class OpenAIProvider implements AIProvider {
   private readonly config = openAIConfig();

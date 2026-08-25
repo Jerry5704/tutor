@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { TutorContext } from "@/server/ai/contracts";
-import { tutorRequestInput } from "@/server/ai/openai-provider";
+import { tutorRequestInput } from "@/server/ai/tutor-request-input";
 import {
   resumePausedSessionData,
   sessionAcceptsInput,

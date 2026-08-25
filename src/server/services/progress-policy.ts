@@ -4,7 +4,8 @@ export const PRE_TRANSFER_MASTERY_CEILING = 0.74;
 
 export function capDeltaBeforeTransfer(currentMastery: number, proposedDelta: number) {
   if (proposedDelta <= 0) return proposedDelta;
-  return Math.min(proposedDelta, Math.max(0, PRE_TRANSFER_MASTERY_CEILING - currentMastery));
+  const capped = Math.min(proposedDelta, Math.max(0, PRE_TRANSFER_MASTERY_CEILING - currentMastery));
+  return Math.round(capped * 1000) / 1000;
 }
 
 export function capMasteryBeforeTransfer(mastery: number) {

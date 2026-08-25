@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { TutorTurn } from "@/server/ai/contracts";
 import {
+  PRE_TRANSFER_MASTERY_CEILING,
+  capDeltaBeforeTransfer,
+  capMasteryBeforeTransfer,
   challengeFor,
   diagnosticMasteryDelta,
   explicitlyRequestsHelp,
@@ -88,5 +91,15 @@ describe("progress policy", () => {
     assert.equal(challengeFor(0.1), "RECALL");
     assert.equal(challengeFor(0.5), "MECHANISM");
     assert.equal(challengeFor(0.8), "TRANSFER");
+  });
+
+  it("caps accumulated practice mastery until a transfer question is answered", () => {
+    assert.equal(capDeltaBeforeTransfer(0.7, 0.1), 0.04);
+    assert.equal(capDeltaBeforeTransfer(PRE_TRANSFER_MASTERY_CEILING, 0.1), 0);
+    assert.equal(capMasteryBeforeTransfer(0.91), PRE_TRANSFER_MASTERY_CEILING);
+  });
+
+  it("preserves negative corrections before transfer", () => {
+    assert.equal(capDeltaBeforeTransfer(0.7, -0.03), -0.03);
   });
 });
