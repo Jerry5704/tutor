@@ -26,6 +26,7 @@ import {
   nextScaffoldLevel,
   requestsBulkDiagnosticSkip,
   asksForClarification,
+  capDeltaBeforeTransfer,
   confirmsUnderstanding,
 } from "@/server/services/progress-policy";
 
@@ -460,12 +461,20 @@ export class TutorService {
       where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
     });
 
+    if (session.phase === "LEARNING" && objectiveState.learningStep !== "TRANSFER" && result.turn.evidenceLevel === "TRANSFER") {
+      result.turn.evidenceLevel = "MECHANISM";
+      result.validationAudit?.issues.push("transfer_evidence_capped_before_transfer_question");
+    }
+
     let delta = session.phase === "DIAGNOSTIC"
       ? diagnosticMasteryDelta(currentMastery, result.turn, forceExplanation)
       : masteryDelta(result.turn, session.scaffoldLevel, forceExplanation);
     if (session.phase === "LEARNING" && demonstratesUnderstanding(result.turn)) {
       const target = objectiveState.learningStep === "TRANSFER" ? 0.82 : 0.6;
       delta = Math.max(delta, Math.round(Math.max(0, target - currentMastery) * 1000) / 1000);
+    }
+    if (session.phase === "LEARNING" && objectiveState.learningStep !== "TRANSFER") {
+      delta = capDeltaBeforeTransfer(currentMastery, delta);
     }
     const scaffoldLevel = nextScaffoldLevel(result.turn, session.scaffoldLevel, forceExplanation);
     await db.tutorMessage.create({ data: { sessionId, role: "STUDENT", content } });

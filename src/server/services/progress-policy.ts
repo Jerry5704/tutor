@@ -1,5 +1,16 @@
 import type { TutorTurn } from "@/server/ai/contracts";
 
+export const PRE_TRANSFER_MASTERY_CEILING = 0.74;
+
+export function capDeltaBeforeTransfer(currentMastery: number, proposedDelta: number) {
+  if (proposedDelta <= 0) return proposedDelta;
+  return Math.min(proposedDelta, Math.max(0, PRE_TRANSFER_MASTERY_CEILING - currentMastery));
+}
+
+export function capMasteryBeforeTransfer(mastery: number) {
+  return Math.min(PRE_TRANSFER_MASTERY_CEILING, mastery);
+}
+
 const helpPatterns = [
   /\bnie mam pojęcia\b/i,
   /\b(powiedz|napisz|wyjaśnij|wytłumacz)\b.*\b(mi|proszę)?\b/i,

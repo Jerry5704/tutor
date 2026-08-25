@@ -2,7 +2,7 @@ import type { ConceptAIProvider, ConceptTurn } from "@/server/ai/contracts";
 import { db } from "@/server/db/client";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
-import { confirmsUnderstanding, explicitlyRequestsHelp } from "@/server/services/progress-policy";
+import { capMasteryBeforeTransfer, confirmsUnderstanding, explicitlyRequestsHelp } from "@/server/services/progress-policy";
 import { aggregateConceptMastery } from "@/server/services/concept-evidence-policy";
 import { questionFingerprint } from "@/server/services/question-history";
 import { CONCEPT_TUTOR_PROMPT_VERSION } from "@/server/prompts/concept-tutor";
@@ -182,11 +182,11 @@ export class ConceptTutorService {
       const masteryByConcept = new Map(conceptStates.map((item) => [item.conceptId, item.mastery]));
       masteryByConcept.set(session.conceptId, nextMastery);
       objectiveMasteryBefore = objectiveMastery?.mastery ?? 0;
-      objectiveMasteryAfter = aggregateConceptMastery({
+      objectiveMasteryAfter = capMasteryBeforeTransfer(aggregateConceptMastery({
         links,
         masteryByConcept,
         currentObjectiveMastery: objectiveMasteryBefore,
-      });
+      }));
       objectiveConfidenceAfter = Math.min(1, (objectiveMastery?.confidence ?? 0) + 0.05);
     }
     const helpContent = `${turn.directAnswer.trim() || turn.feedback}\n\nCzy ta konkretna odpowiedź jest jasna? Jeśli tak, napisz „dalej”. Jeśli nie, wskaż słowo lub fragment, który mam rozwinąć.`;
