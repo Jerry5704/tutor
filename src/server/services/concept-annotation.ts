@@ -1,3 +1,5 @@
+import { isGenotypeSymbol } from "@/server/services/concept-alias-policy";
+
 export type AnnotatableConcept = {
   id: string;
   slug: string;
@@ -30,7 +32,10 @@ export function annotateConceptText(text: string, concepts: AnnotatableConcept[]
   for (const concept of concepts) {
     const aliases = [concept.name, ...concept.aliases.map((item) => item.alias)].sort((a, b) => b.length - a.length);
     for (const alias of aliases) {
-      const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(alias)}(?![\\p{L}\\p{N}])`, "giu");
+      const pattern = new RegExp(
+        `(?<![\\p{L}\\p{N}])${escapeRegExp(alias)}(?![\\p{L}\\p{N}])`,
+        isGenotypeSymbol(alias) ? "gu" : "giu",
+      );
       for (const match of text.matchAll(pattern)) {
         if (match.index === undefined) continue;
         matches.push({ start: match.index, end: match.index + match[0].length, concept });
@@ -38,7 +43,10 @@ export function annotateConceptText(text: string, concepts: AnnotatableConcept[]
     }
   }
   for (const candidate of candidates) {
-    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(candidate.term)}(?![\\p{L}\\p{N}])`, "giu");
+    const pattern = new RegExp(
+      `(?<![\\p{L}\\p{N}])${escapeRegExp(candidate.term)}(?![\\p{L}\\p{N}])`,
+      isGenotypeSymbol(candidate.term) ? "gu" : "giu",
+    );
     for (const match of text.matchAll(pattern)) {
       if (match.index === undefined) continue;
       matches.push({ start: match.index, end: match.index + match[0].length, candidate });

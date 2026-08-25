@@ -2,27 +2,11 @@ import type { ConceptAIProvider } from "@/server/ai/contracts";
 import { db } from "@/server/db/client";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { visibleConceptsFor } from "@/server/services/concept-visibility";
-
-const TERM_PATTERNS = [
-  /\bco to jest\s+[„"']?(.+?)[”"']?[?.!]*$/iu,
-  /\bco (?:to )?(?:znaczy|oznacza)\s+[„"']?(.+?)[”"']?[?.!]*$/iu,
-  /\bczym jest\s+[„"']?(.+?)[”"']?[?.!]*$/iu,
-  /\b(?:wyjaśnij|wytłumacz)(?: mi)?\s+[„"']?(.+?)[”"']?[?.!]*$/iu,
-];
+import { normalizedConceptAlias } from "@/server/services/concept-alias-policy";
+import { requestedConceptTerm } from "@/server/services/concept-term-policy";
 
 function normalize(value: string) {
   return value.toLocaleLowerCase("pl-PL").normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/\s+/gu, " ").trim();
-}
-
-function normalizeAlias(value: string) {
-  return value.toLocaleLowerCase("pl-PL").normalize("NFKC").replace(/\s+/gu, " ").trim();
-}
-
-function requestedTerm(message: string) {
-  for (const pattern of TERM_PATTERNS) {
-    const term = pattern.exec(message)?.[1]?.trim();
-    if (term && term.length >= 3 && term.length <= 80) return term.replace(/[?.!]+$/gu, "").trim();
-  }
 }
 
 function slugify(value: string) {
@@ -36,7 +20,7 @@ export class ConceptDiscoveryService {
   ) {}
 
   private async addRequestedAlias(conceptId: string, alias: string) {
-    const normalizedAlias = normalizeAlias(alias);
+    const normalizedAlias = normalizedConceptAlias(alias);
     await db.conceptAlias.upsert({
       where: { conceptId_normalizedAlias: { conceptId, normalizedAlias } },
       update: { alias },
@@ -45,7 +29,7 @@ export class ConceptDiscoveryService {
   }
 
   async discover(studentId: string, studySessionId: string, message: string, preferredObjectiveId?: string) {
-    const term = requestedTerm(message);
+    const term = requestedConceptTerm(message);
     if (!term) return undefined;
     const session = await db.studySession.findFirst({
       where: { id: studySessionId, studentId, endedAt: null, pausedAt: null },
@@ -61,7 +45,7 @@ export class ConceptDiscoveryService {
           visibleConceptsFor(studentId),
           { OR: [
             { name: { equals: term, mode: "insensitive" } },
-            { aliases: { some: { normalizedAlias: normalizeAlias(term) } } },
+            { aliases: { some: { normalizedAlias: normalizedConceptAlias(term) } } },
           ] },
         ],
       },
@@ -97,7 +81,7 @@ export class ConceptDiscoveryService {
           visibleConceptsFor(studentId),
           { OR: [
             { name: { equals: canonicalName, mode: "insensitive" } },
-            { aliases: { some: { normalizedAlias: normalizeAlias(canonicalName) } } },
+            { aliases: { some: { normalizedAlias: normalizedConceptAlias(canonicalName) } } },
           ] },
         ],
       },
@@ -115,7 +99,7 @@ export class ConceptDiscoveryService {
     const aliases = new Map<string, string>();
     for (const alias of [term, canonicalName, ...generated.aliases].filter(Boolean)) {
       const trimmed = alias.trim();
-      if (trimmed.length >= 2 && trimmed.length <= 80) aliases.set(normalizeAlias(trimmed), trimmed);
+      if (trimmed.length >= 2 && trimmed.length <= 80) aliases.set(normalizedConceptAlias(trimmed), trimmed);
     }
     return db.concept.create({
       data: {

@@ -22,4 +22,10 @@ describe("quick test unit curriculum", () => {
     assert.ok(quickTestUnit.source.chunks.length >= 2);
     assert.ok(quickTestUnit.source.chunks.every((chunk) => chunk.locator.startsWith("book-page")));
   });
+
+  it("provides a curated explanation for case-sensitive genotype symbols", () => {
+    const notation = quickTestUnit.concepts.find((concept) => concept.slug === "zapis-genotypu");
+    assert.deepEqual(notation?.aliases.slice(0, 3), ["AA", "Aa", "aa"]);
+    assert.ok(notation?.sourceLocators.includes("book-pages:66-67"));
+  });
 });

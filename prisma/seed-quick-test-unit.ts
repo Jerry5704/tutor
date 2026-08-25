@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { quickTestUnit } from "../src/server/curriculum/quick-test-unit-data";
+import { normalizedConceptAlias } from "../src/server/services/concept-alias-policy";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -35,7 +36,7 @@ async function main() {
     create: { unitId: unit.id, order: quickTestUnit.topic.order, title: quickTestUnit.topic.title },
   });
 
-  const objectives: Array<{ id: string }> = [];
+  const objectives: Array<{ id: string; code: string }> = [];
   for (const objective of quickTestUnit.objectives) {
     objectives.push(await db.learningObjective.upsert({
       where: { code: objective.code },
@@ -102,6 +103,7 @@ async function main() {
     await tx.knowledgeChunk.createMany({
       data: quickTestUnit.source.chunks.map((chunk) => ({ sourceId: source.id, ...chunk })),
     });
+    const chunks = await tx.knowledgeChunk.findMany({ where: { sourceId: source.id } });
     await tx.knowledgeSourceCurriculum.upsert({
       where: { sourceId_curriculumVersionId: { sourceId: source.id, curriculumVersionId: course.curriculumVersionId } },
       update: {},
@@ -123,6 +125,68 @@ async function main() {
         update: {},
         create: { sourceId: source.id, learningObjectiveId: objective.id },
       });
+    }
+    for (const conceptData of quickTestUnit.concepts) {
+      const objective = objectives.find((item) => item.code === conceptData.objectiveCode);
+      if (!objective) throw new Error(`Missing objective for concept: ${conceptData.slug}`);
+      const concept = await tx.concept.upsert({
+        where: {
+          curriculumVersionId_slug: {
+            curriculumVersionId: course.curriculumVersionId,
+            slug: conceptData.slug,
+          },
+        },
+        update: {
+          name: conceptData.name,
+          shortDefinition: conceptData.shortDefinition,
+          simpleExplanation: conceptData.simpleExplanation,
+          whyItMatters: conceptData.whyItMatters,
+          commonMisconception: conceptData.commonMisconception,
+          concreteExample: conceptData.concreteExample,
+          checkQuestion: conceptData.checkQuestion,
+          transferQuestion: conceptData.transferQuestion,
+          active: true,
+          origin: "CURATED",
+          reviewStatus: "APPROVED",
+        },
+        create: {
+          curriculumVersionId: course.curriculumVersionId,
+          slug: conceptData.slug,
+          name: conceptData.name,
+          shortDefinition: conceptData.shortDefinition,
+          simpleExplanation: conceptData.simpleExplanation,
+          whyItMatters: conceptData.whyItMatters,
+          commonMisconception: conceptData.commonMisconception,
+          concreteExample: conceptData.concreteExample,
+          checkQuestion: conceptData.checkQuestion,
+          transferQuestion: conceptData.transferQuestion,
+          active: true,
+          origin: "CURATED",
+          reviewStatus: "APPROVED",
+        },
+      });
+      for (const alias of conceptData.aliases) {
+        const normalizedAlias = normalizedConceptAlias(alias);
+        await tx.conceptAlias.upsert({
+          where: { conceptId_normalizedAlias: { conceptId: concept.id, normalizedAlias } },
+          update: { alias },
+          create: { conceptId: concept.id, alias, normalizedAlias },
+        });
+      }
+      await tx.conceptObjective.upsert({
+        where: { conceptId_learningObjectiveId: { conceptId: concept.id, learningObjectiveId: objective.id } },
+        update: { importance: 1 },
+        create: { conceptId: concept.id, learningObjectiveId: objective.id, importance: 1 },
+      });
+      for (const locator of conceptData.sourceLocators) {
+        const chunk = chunks.find((item) => item.locator === locator);
+        if (!chunk) throw new Error(`Missing knowledge chunk ${locator} for concept ${conceptData.slug}`);
+        await tx.conceptSource.upsert({
+          where: { conceptId_knowledgeChunkId: { conceptId: concept.id, knowledgeChunkId: chunk.id } },
+          update: {},
+          create: { conceptId: concept.id, knowledgeChunkId: chunk.id },
+        });
+      }
     }
   });
 

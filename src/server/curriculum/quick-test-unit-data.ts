@@ -54,6 +54,22 @@ export const quickTestUnit = {
       maturaRelevant: true,
     },
   ],
+  concepts: [
+    {
+      slug: "zapis-genotypu",
+      name: "zapis genotypu AA, Aa i aa",
+      shortDefinition: "Symboliczny zapis dwóch alleli danego genu w organizmie diploidalnym.",
+      simpleExplanation: "Każda litera oznacza jeden allel tego samego genu. AA oznacza dwa allele dominujące, Aa — jeden dominujący i jeden recesywny, a aa — dwa allele recesywne. Wielkość litery ma więc znaczenie i nie wolno traktować AA, Aa oraz aa jako tego samego zapisu.",
+      whyItMatters: "Z zapisu można rozpoznać homozygotę lub heterozygotę, przewidzieć rodzaje gamet i — przy podanym stosunku dominacji — fenotyp.",
+      commonMisconception: "AA nie oznacza cechy „podwójnie silnej”. Przy dominacji zupełnej AA i Aa mogą mieć taki sam fenotyp dominujący.",
+      concreteExample: "Roślina AA jest homozygotą dominującą i tworzy tylko gamety A. Roślina Aa jest heterozygotą i tworzy gamety A oraz a. Roślina aa jest homozygotą recesywną i tworzy tylko gamety a.",
+      checkQuestion: "Co oznaczają obie litery w zapisie Aa i dlaczego jest to heterozygota?",
+      transferQuestion: "Który z genotypów AA, Aa i aa może przekazać potomstwu zarówno allel A, jak i allel a? Uzasadnij.",
+      aliases: ["AA", "Aa", "aa", "zapis genotypu"],
+      objectiveCode: "classic_genotype_phenotype_test",
+      sourceLocators: ["book-pages:66-67"],
+    },
+  ],
   source: {
     title: "Biologia na czasie 4 — rozdział 2, szybki zakres testowy",
     provenance: "User-provided scan; biologia-na-czasie-4.pdf; chapter 2 pages 66-74; curated from local OCR",
