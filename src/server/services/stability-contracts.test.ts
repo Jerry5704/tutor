@@ -43,6 +43,8 @@ const context = (teacherScopeNote?: string): TutorContext => ({
   desiredChallenge: "RECALL",
   forceExplanation: false,
   clarificationRequest: false,
+  currentQuestion: "Czy to nić wiodąca czy opóźniona?",
+  questionRequiresExplanation: false,
   teacherScopeNote,
   knowledge: [{ chunkId: "chunk-1", sourceId: "source-1", sourceTitle: "Podręcznik", locator: "s. 12", content: "Treść źródłowa" }],
   recentMessages: [{ role: "TUTOR", content: "Pytanie" }],
@@ -97,6 +99,8 @@ describe("stability contracts", () => {
       description: "Uczeń wyjaśnia budowę nukleotydu.",
     });
     assert.equal(payload.approvedKnowledge[0]?.locator, "s. 12");
+    assert.equal(payload.currentQuestion, "Czy to nić wiodąca czy opóźniona?");
+    assert.equal(payload.questionRequiresExplanation, false);
     assert.equal(tutorRequestInput(context()).teacherScopeNote, null);
   });
 });

@@ -6,6 +6,8 @@ export function tutorRequestInput(context: TutorContext) {
     objective: { code: context.objectiveCode, description: context.objectiveDescription },
     teacherScopeNote: context.teacherScopeNote ?? null,
     clarificationRequest: context.clarificationRequest,
+    currentQuestion: context.currentQuestion,
+    questionRequiresExplanation: context.questionRequiresExplanation,
     approvedKnowledge: context.knowledge,
     recentConversation: context.recentMessages,
     studentAnswer: context.answer,

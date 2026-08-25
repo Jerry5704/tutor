@@ -30,6 +30,8 @@ export interface TutorContext {
   desiredChallenge: "RECALL" | "MECHANISM" | "TRANSFER";
   forceExplanation: boolean;
   clarificationRequest: boolean;
+  currentQuestion: string;
+  questionRequiresExplanation: boolean;
   teacherScopeNote?: string;
   knowledge: KnowledgeExcerpt[];
   recentMessages: { role: "TUTOR" | "STUDENT"; content: string }[];

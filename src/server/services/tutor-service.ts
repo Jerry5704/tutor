@@ -11,6 +11,7 @@ import { createStudentAnswerOnce } from "@/server/services/student-answer-idempo
 import { resumePausedSessionData } from "@/server/services/session-lifecycle-policy";
 import { finishesDiagnosticProbe, learningTransition } from "@/server/services/learning-transition-policy";
 import { requestsVisual, VisualAidService } from "@/server/services/visual-aid-service";
+import { questionRequiresExplanation, visibleQuestionFromMessage } from "@/server/services/question-contract";
 import {
   intentForNextAction,
   questionFingerprint,
@@ -420,6 +421,8 @@ export class TutorService {
       return null;
     }
     const forceExplanation = helpRequested || clarificationRequest;
+    const latestTutorMessage = session.messages.find((message) => message.role === "TUTOR")?.content ?? "";
+    const currentQuestion = visibleQuestionFromMessage(latestTutorMessage);
     const knowledge = await this.knowledge.retrieveForObjective(objective.id, content);
     const rawResult = await this.ai.assessAndRespond({
       phase: session.phase === "DIAGNOSTIC" ? "DIAGNOSTIC" : "LEARNING",
@@ -432,6 +435,8 @@ export class TutorService {
       desiredChallenge: challengeFor(currentMastery),
       forceExplanation,
       clarificationRequest,
+      currentQuestion,
+      questionRequiresExplanation: questionRequiresExplanation(currentQuestion),
       teacherScopeNote: session.teacherScopeNote?.content,
       knowledge,
       recentMessages: session.messages.toReversed().map(({ role, content: text }) => ({ role, content: text })),

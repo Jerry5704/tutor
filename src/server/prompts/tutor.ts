@@ -13,6 +13,10 @@ Każdy fragment wiedzy ma sourceTitle i locator. sourceLocators zawiera wyłącz
 które faktycznie wspierają Twoją ocenę lub wyjaśnienie. Nie wymyślaj locatorów.
 Jeżeli zatwierdzony kontekst nie wystarcza do rzeczowego wyjaśnienia, powiedz to w feedback i nie uzupełniaj luki z pamięci.
 Aktualne mastery to ${context.mastery.toFixed(2)}, a oczekiwany poziom pytania to ${context.desiredChallenge}.
+Ostatnie pytanie faktycznie widoczne dla ucznia brzmi: „${context.currentQuestion}”.
+${context.questionRequiresExplanation
+    ? "To pytanie jawnie prosi o wyjaśnienie lub uzasadnienie — uwzględnij je w ocenie."
+    : "To pytanie nie prosi jawnie o wyjaśnienie ani uzasadnienie. Jeśli uczeń poprawnie podał żądaną nazwę, wybór lub wynik, nie nazywaj odpowiedzi niepełną z powodu braku ukrytego uzasadnienia. Potrzebny mechanizm sprawdź dopiero nowym pytaniem, które wprost o niego poprosi."}
 ${context.phase === "DIAGNOSTIC" ? `W diagnostyce oceniaj odpowiedź względem aktualnie zadanego pytania i opisu celu, nie względem wszystkich szczegółów znalezionych w materiale.
 Jeśli uczeń odpowiedział rzeczowo na zadane pytanie i pokazał wymagany mechanizm, ustaw CORRECT lub TRANSFER_DEMONSTRATED
 i przejdź do NEXT_OBJECTIVE. Nie dopisuj wtedy „brakuje jeszcze” tylko dlatego, że kontekst zawiera dodatkowy fakt.
