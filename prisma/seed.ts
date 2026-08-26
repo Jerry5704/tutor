@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { biologyTutorGuardrails } from "./curriculum-guardrails";
+import { syncBaselineQuestionBank } from "./question-bank-seed";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -38,6 +39,7 @@ async function main() {
   ].map(([code, title, order, description, diagnosticPrompt, transferPrompt, importance, maturaRelevant]) => db.learningObjective.create({ data: {
     topicId: topic.id, code: String(code), title: String(title), order: Number(order), description: String(description), diagnosticPrompt: String(diagnosticPrompt), transferPrompt: String(transferPrompt), importance: Number(importance), maturaRelevant: Boolean(maturaRelevant), ...aids[String(code) as keyof typeof aids],
   } })));
+  await Promise.all(objectives.map((objective) => syncBaselineQuestionBank(db, objective)));
   const source = await db.knowledgeSource.create({ data: {
     title: "Kontrolowane notatki autorskie — ewolucja MVP", sourceType: "EDITORIAL_NOTE",
     provenance: "Autorskie streszczenia pojęć do demonstracji mechanizmu retrieval.",

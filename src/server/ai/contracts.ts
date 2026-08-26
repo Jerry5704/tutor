@@ -15,6 +15,11 @@ export const tutorTurnSchema = z.object({
     term: z.string().min(2).max(80),
     sourceLocators: z.array(z.string()),
   })).max(6),
+  rubricEvaluation: z.array(z.object({
+    criterionCode: z.string().min(1).max(120),
+    status: z.enum(["MET", "PARTIALLY_MET", "NOT_MET", "CONTRADICTED"]),
+    evidence: z.string().max(600),
+  })).max(30),
 });
 
 export type TutorTurn = z.infer<typeof tutorTurnSchema>;
@@ -32,6 +37,22 @@ export interface TutorContext {
   clarificationRequest: boolean;
   currentQuestion: string;
   questionRequiresExplanation: boolean;
+  questionRubric?: {
+    id: string;
+    title: string;
+    sourceType: "CKE_EXACT" | "CKE_DERIVED" | "TEACHER_SPECIFIC" | "CURRICULUM_DERIVED" | "INTERNAL_LEARNING";
+    scoringMode: "LEARNING_EVIDENCE" | "EXAM_POINTS";
+    sourceLocator: string | null;
+    sourceVersion: string | null;
+    maxPoints: number | null;
+    criteria: Array<{
+      code: string;
+      description: string;
+      required: boolean;
+      points: number | null;
+      evidenceLevel: string;
+    }>;
+  };
   teacherScopeNote?: string;
   knowledge: KnowledgeExcerpt[];
   recentMessages: { role: "TUTOR" | "STUDENT"; content: string }[];

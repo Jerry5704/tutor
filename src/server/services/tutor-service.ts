@@ -1,9 +1,11 @@
 import type { AIProvider, AIResult, TutorTurn } from "@/server/ai/contracts";
+import { randomUUID } from "node:crypto";
 import { validateTutorAIResult } from "@/server/ai/output-validation";
 import { db } from "@/server/db/client";
 import { AssessmentService } from "@/server/services/assessment-service";
 import { AIUsageService } from "@/server/services/ai-usage-service";
 import { LearningEventService } from "@/server/services/learning-event-service";
+import { QuestionBankService, type SelectedQuestion } from "@/server/services/question-bank-service";
 import { objectivesInTestScope } from "@/server/services/test-plan-policy";
 import { CurriculumService } from "@/server/services/curriculum-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
@@ -19,7 +21,6 @@ import { questionRequiresExplanation, visibleQuestionFromMessage } from "@/serve
 import {
   intentForNextAction,
   questionFingerprint,
-  selectTransferQuestion,
   type QuestionIntent,
 } from "@/server/services/question-history";
 import {
@@ -61,10 +62,6 @@ function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-function diagnosticQuestion(objective: Objective) {
-  return `Przejdźmy do kolejnego zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — zapiszę to jako zagadnienie do nauki.`;
-}
-
 function guidedLesson(objective: Objective) {
   const workedExample = objective.workedExample.startsWith(objective.microExplanation)
     ? objective.workedExample.slice(objective.microExplanation.length).trim()
@@ -86,7 +83,42 @@ export class TutorService {
     private readonly conceptProgress = new ConceptProgressService(),
     private readonly aiUsage = new AIUsageService(),
     private readonly learningEvents = new LearningEventService(),
+    private readonly questionBank = new QuestionBankService(),
   ) {}
+
+  private async selectQuestion(
+    sessionId: string,
+    objective: Objective,
+    purpose: "DIAGNOSTIC" | "PRACTICE" | "TRANSFER",
+    testPlanId?: string | null,
+  ): Promise<SelectedQuestion> {
+    const selected = await this.questionBank.select({
+      sessionId,
+      learningObjectiveId: objective.id,
+      purpose,
+      testPlanId,
+    });
+    if (selected) return selected;
+    const prompt = purpose === "DIAGNOSTIC"
+      ? objective.diagnosticPrompt
+      : purpose === "PRACTICE" ? objective.practicePrompt : objective.transferPrompt;
+    return {
+      id: "",
+      stableKey: `${objective.code}:${purpose.toLocaleLowerCase("pl-PL")}:legacy-fallback`,
+      version: 0,
+      prompt,
+      purpose,
+      evidenceLevel: purpose === "TRANSFER" ? "TRANSFER" : "MECHANISM",
+      sourceType: "INTERNAL_LEARNING",
+      sourceLocator: null,
+      sourceVersion: null,
+      rubric: null,
+    };
+  }
+
+  private diagnosticMessage(objective: Objective, question: SelectedQuestion) {
+    return `Przejdźmy do kolejnego zagadnienia: ${objective.title}.\n\n${question.prompt} Jeśli nie wiesz, napisz wprost — zapiszę to jako zagadnienie do nauki.`;
+  }
 
   private objectives(unit: Awaited<ReturnType<CurriculumService["getUnitForStudent"]>>, plan?: ScopedPlan | null) {
     const objectives = unit.topics.flatMap((topic) => topic.objectives) as Objective[];
@@ -155,6 +187,7 @@ export class TutorService {
     });
     if (state.learningStep !== "EXPLAIN") return;
     const objective = await db.learningObjective.findUniqueOrThrow({ where: { id: session.currentObjectiveId } });
+    const question = await this.selectQuestion(sessionId, objective, "PRACTICE", session.testPlanId);
     await db.$transaction([
       db.sessionObjectiveState.update({
         where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
@@ -164,10 +197,12 @@ export class TutorService {
         data: {
           sessionId,
           role: "TUTOR",
-          content: `Spróbuj teraz samodzielnie, bez widocznego wyjaśnienia:\n\n${objective.practicePrompt}`,
+          content: `Spróbuj teraz samodzielnie, bez widocznego wyjaśnienia:\n\n${question.prompt}`,
           learningObjectiveId: objective.id,
           questionIntent: "PRACTICE",
-          questionFingerprint: questionFingerprint(objective.id, objective.practicePrompt),
+          questionFingerprint: questionFingerprint(objective.id, question.prompt),
+          questionVersionId: question.id || undefined,
+          questionRubricId: question.rubric?.id,
         },
       }),
     ]);
@@ -205,6 +240,12 @@ export class TutorService {
     objectives: Objective[];
   }) {
     const { studentId, sessionId, answerId, content, objective, objectives } = params;
+    const diagnosticPromptMessage = await db.tutorMessage.findFirst({
+      where: { sessionId, role: "TUTOR" },
+      orderBy: { createdAt: "desc" },
+      select: { questionVersionId: true, questionRubricId: true },
+    });
+    const diagnosticRubric = await this.questionBank.rubric(diagnosticPromptMessage?.questionRubricId);
     const remainingStates = await db.sessionObjectiveState.findMany({
       where: { sessionId, status: "NOT_STARTED" },
       select: { learningObjectiveId: true },
@@ -224,13 +265,23 @@ export class TutorService {
         rationale: "Uczeń jawnie zgłosił brak wiedzy podczas diagnostyki; odpowiedź zapisano bez uruchamiania AI.",
         sourceLocators: [],
         conceptMentions: [],
+        rubricEvaluation: [],
       },
       responseId: `policy:diagnostic-gap:${answerId}`,
       model: "deterministic-policy",
       latencyMs: 0,
     };
     await db.tutorMessage.create({ data: { sessionId, role: "STUDENT", content } });
-    const recorded = await this.assessments.record(studentId, answerId, [objective.id], policyResult, 0);
+    const recorded = await this.assessments.record(
+      studentId,
+      answerId,
+      [objective.id],
+      policyResult,
+      0,
+      [],
+      true,
+      { questionVersionId: diagnosticPromptMessage?.questionVersionId, rubric: diagnosticRubric },
+    );
     await db.sessionObjectiveState.update({
       where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
       data: { status: "LEARNING", diagnosticAttempts: { increment: 1 } },
@@ -238,6 +289,7 @@ export class TutorService {
     const acknowledgement = `Zapisuję „${objective.title}” jako zagadnienie do nauki. Wrócimy do niego po zakończeniu diagnozy.`;
 
     if (nextObjective) {
+      const nextQuestion = await this.selectQuestion(sessionId, nextObjective, "DIAGNOSTIC");
       await db.$transaction([
         db.sessionObjectiveState.update({
           where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: nextObjective.id } },
@@ -251,10 +303,12 @@ export class TutorService {
           data: {
             sessionId,
             role: "TUTOR",
-            content: `${acknowledgement}\n\n${diagnosticQuestion(nextObjective)}`,
+            content: `${acknowledgement}\n\n${this.diagnosticMessage(nextObjective, nextQuestion)}`,
             learningObjectiveId: nextObjective.id,
             questionIntent: "DIAGNOSTIC",
-            questionFingerprint: questionFingerprint(nextObjective.id, nextObjective.diagnosticPrompt),
+            questionFingerprint: questionFingerprint(nextObjective.id, nextQuestion.prompt),
+            questionVersionId: nextQuestion.id || undefined,
+            questionRubricId: nextQuestion.rubric?.id,
           },
         }),
       ]);
@@ -313,20 +367,26 @@ export class TutorService {
     const objective = objectives[0];
     if (!objective) throw new Error("Unit has no learning objectives");
 
+    const sessionId = randomUUID();
+    const question = await this.selectQuestion(sessionId, objective, "DIAGNOSTIC", testPlan.id);
     const session = await db.studySession.create({ data: {
+      id: sessionId,
       studentId,
       unitId,
       testPlanId: testPlan.id,
+      promptVersion: PROMPT_VERSION,
       currentObjectiveId: objective.id,
       teacherScopeNote: (testPlan.originalTeacherNote || teacherNote?.trim())
         ? { create: { content: testPlan.originalTeacherNote || teacherNote?.trim() || "" } }
         : undefined,
       messages: { create: {
         role: "TUTOR",
-        content: `Zanim zaczniemy naukę, sprawdźmy cały dział. Zaczynamy od zagadnienia: ${objective.title}.\n\n${objective.diagnosticPrompt} Jeśli nie wiesz, napisz wprost — zapiszę to jako zagadnienie do nauki.`,
+        content: `Zanim zaczniemy naukę, sprawdźmy cały dział. ${this.diagnosticMessage(objective, question)}`,
         learningObjectiveId: objective.id,
         questionIntent: "DIAGNOSTIC",
-        questionFingerprint: questionFingerprint(objective.id, objective.diagnosticPrompt),
+        questionFingerprint: questionFingerprint(objective.id, question.prompt),
+        questionVersionId: question.id || undefined,
+        questionRubricId: question.rubric?.id,
       } },
     } });
     await this.ensureObjectiveStates(session.id, objectives.map((item) => item.id), objective.id);
@@ -356,6 +416,7 @@ export class TutorService {
     if (session.awaitingUnderstandingCheck && confirmsUnderstanding(content)) {
       await db.tutorMessage.create({ data: { sessionId, role: "STUDENT", content } });
       if (session.phase !== "DIAGNOSTIC") {
+        const practiceQuestion = await this.selectQuestion(sessionId, objective, "PRACTICE", session.testPlanId);
         await db.$transaction([
           db.sessionObjectiveState.update({
             where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
@@ -369,10 +430,12 @@ export class TutorService {
             data: {
               sessionId,
               role: "TUTOR",
-              content: `Dobrze. Sprawdźmy to teraz bez podpowiedzi:\n\n${objective.practicePrompt}`,
+              content: `Dobrze. Sprawdźmy to teraz bez podpowiedzi:\n\n${practiceQuestion.prompt}`,
               learningObjectiveId: objective.id,
               questionIntent: "PRACTICE",
-              questionFingerprint: questionFingerprint(objective.id, objective.practicePrompt),
+              questionFingerprint: questionFingerprint(objective.id, practiceQuestion.prompt),
+              questionVersionId: practiceQuestion.id || undefined,
+              questionRubricId: practiceQuestion.rubric?.id,
             },
           }),
         ]);
@@ -389,6 +452,7 @@ export class TutorService {
       const remainingIds = new Set(remainingStates.map((item) => item.learningObjectiveId));
       const nextObjective = objectives.find((item) => remainingIds.has(item.id));
       if (nextObjective) {
+        const nextQuestion = await this.selectQuestion(sessionId, nextObjective, "DIAGNOSTIC", session.testPlanId);
         await db.$transaction([
           db.sessionObjectiveState.update({
             where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: nextObjective.id } },
@@ -402,10 +466,12 @@ export class TutorService {
             data: {
               sessionId,
               role: "TUTOR",
-              content: `Dobrze. ${diagnosticQuestion(nextObjective)}`,
+              content: `Dobrze. ${this.diagnosticMessage(nextObjective, nextQuestion)}`,
               learningObjectiveId: nextObjective.id,
               questionIntent: "DIAGNOSTIC",
-              questionFingerprint: questionFingerprint(nextObjective.id, nextObjective.diagnosticPrompt),
+              questionFingerprint: questionFingerprint(nextObjective.id, nextQuestion.prompt),
+              questionVersionId: nextQuestion.id || undefined,
+              questionRubricId: nextQuestion.rubric?.id,
             },
           }),
         ]);
@@ -454,8 +520,9 @@ export class TutorService {
       return null;
     }
     const forceExplanation = helpRequested || clarificationRequest;
-    const latestTutorMessage = session.messages.find((message) => message.role === "TUTOR")?.content ?? "";
-    const currentQuestion = visibleQuestionFromMessage(latestTutorMessage);
+    const latestTutorMessage = session.messages.find((message) => message.role === "TUTOR");
+    const currentQuestion = visibleQuestionFromMessage(latestTutorMessage?.content ?? "");
+    const activeRubric = await this.questionBank.rubric(latestTutorMessage?.questionRubricId);
     const knowledge = await this.knowledge.retrieveForObjective(objective.id, content);
     const rawResult = await this.aiUsage.capture({
       studentId,
@@ -475,6 +542,7 @@ export class TutorService {
       clarificationRequest,
       currentQuestion,
       questionRequiresExplanation: questionRequiresExplanation(currentQuestion),
+      questionRubric: activeRubric ?? undefined,
       teacherScopeNote: [
         session.teacherScopeNote?.content,
         session.testPlan && stringArray(session.testPlan.expectedTaskTypes).length
@@ -498,6 +566,7 @@ export class TutorService {
       rawResult,
       objective.code,
       knowledge.map((excerpt) => excerpt.locator),
+      activeRubric,
     );
     if (forceExplanation) {
       result.turn.assessment = "INCORRECT";
@@ -526,7 +595,16 @@ export class TutorService {
     }
     const scaffoldLevel = nextScaffoldLevel(result.turn, session.scaffoldLevel, forceExplanation);
     await db.tutorMessage.create({ data: { sessionId, role: "STUDENT", content } });
-    const recordedAssessment = await this.assessments.record(studentId, answer.id, [objective.id], result, delta, knowledge, !clarificationRequest);
+    const recordedAssessment = await this.assessments.record(
+      studentId,
+      answer.id,
+      [objective.id],
+      result,
+      delta,
+      knowledge,
+      !clarificationRequest,
+      { questionVersionId: latestTutorMessage?.questionVersionId, rubric: activeRubric },
+    );
     logInfo("tutor_assessment_recorded", {
       studentId,
       sessionId,
@@ -565,6 +643,8 @@ export class TutorService {
     let messageQuestionFingerprint = result.turn.nextQuestion
       ? questionFingerprint(objective.id, result.turn.nextQuestion)
       : undefined;
+    let messageQuestionVersionId: string | undefined;
+    let messageQuestionRubricId: string | undefined;
     let visualObjectiveId: string | undefined;
     let showVisual = false;
     let endedAt: Date | undefined;
@@ -589,27 +669,36 @@ export class TutorService {
         const remainingIds = new Set(remainingStates.map((item) => item.learningObjectiveId));
         const nextObjective = objectives.find((item) => remainingIds.has(item.id));
         if (nextObjective) {
+          const nextQuestion = await this.selectQuestion(sessionId, nextObjective, "DIAGNOSTIC", session.testPlanId);
           currentObjectiveId = nextObjective.id;
           await db.sessionObjectiveState.update({
             where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: nextObjective.id } },
             data: { status: "DIAGNOSING" },
           });
-          tutorMessage = `${result.turn.feedback}\n\nZapisuję ten fragment jako wymagający spokojnej nauki — wrócimy do niego w planie, zamiast powtarzać to samo.\n\n${diagnosticQuestion(nextObjective)}`;
+          tutorMessage = `${result.turn.feedback}\n\nZapisuję ten fragment jako wymagający spokojnej nauki — wrócimy do niego w planie, zamiast powtarzać to samo.\n\n${this.diagnosticMessage(nextObjective, nextQuestion)}`;
           messageObjectiveId = nextObjective.id;
           questionIntent = "DIAGNOSTIC";
-          messageQuestionFingerprint = questionFingerprint(nextObjective.id, nextObjective.diagnosticPrompt);
+          messageQuestionFingerprint = questionFingerprint(nextObjective.id, nextQuestion.prompt);
+          messageQuestionVersionId = nextQuestion.id || undefined;
+          messageQuestionRubricId = nextQuestion.rubric?.id;
           visualObjectiveId = undefined;
           showVisual = false;
         } else {
-          tutorMessage = `${result.turn.feedback}\n\nZapisuję ten fragment do ponownej nauki. Sprawdźmy teraz jeden mały krok własnymi słowami:\n\n${objective.practicePrompt}`;
+          const practiceQuestion = await this.selectQuestion(sessionId, objective, "PRACTICE", session.testPlanId);
+          tutorMessage = `${result.turn.feedback}\n\nZapisuję ten fragment do ponownej nauki. Sprawdźmy teraz jeden mały krok własnymi słowami:\n\n${practiceQuestion.prompt}`;
           questionIntent = "PRACTICE";
-          messageQuestionFingerprint = questionFingerprint(objective.id, objective.practicePrompt);
+          messageQuestionFingerprint = questionFingerprint(objective.id, practiceQuestion.prompt);
+          messageQuestionVersionId = practiceQuestion.id || undefined;
+          messageQuestionRubricId = practiceQuestion.rubric?.id;
         }
         await db.studySession.update({ where: { id: sessionId }, data: { awaitingUnderstandingCheck: false } });
       } else if (clarificationState.clarificationAttempts >= 2) {
-        tutorMessage = `${result.turn.feedback}\n\nZamiast kolejny raz pytać, czy wszystko jest jasne, sprawdźmy jeden mały krok własnymi słowami:\n\n${objective.practicePrompt}`;
+        const practiceQuestion = await this.selectQuestion(sessionId, objective, "PRACTICE", session.testPlanId);
+        tutorMessage = `${result.turn.feedback}\n\nZamiast kolejny raz pytać, czy wszystko jest jasne, sprawdźmy jeden mały krok własnymi słowami:\n\n${practiceQuestion.prompt}`;
         questionIntent = "PRACTICE";
-        messageQuestionFingerprint = questionFingerprint(objective.id, objective.practicePrompt);
+        messageQuestionFingerprint = questionFingerprint(objective.id, practiceQuestion.prompt);
+        messageQuestionVersionId = practiceQuestion.id || undefined;
+        messageQuestionRubricId = practiceQuestion.rubric?.id;
         showVisual = false;
         await db.studySession.update({ where: { id: sessionId }, data: { awaitingUnderstandingCheck: false } });
       } else {
@@ -649,15 +738,18 @@ export class TutorService {
         const remainingIds = new Set(remainingStates.map((item) => item.learningObjectiveId));
         const nextObjective = objectives.find((item) => remainingIds.has(item.id));
         if (nextObjective) {
+          const nextQuestion = await this.selectQuestion(sessionId, nextObjective, "DIAGNOSTIC", session.testPlanId);
           currentObjectiveId = nextObjective.id;
           await db.sessionObjectiveState.update({
             where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: currentObjectiveId } },
             data: { status: "DIAGNOSING" },
           });
-          tutorMessage = `${result.turn.feedback}\n\n${diagnosticQuestion(nextObjective)}`;
+          tutorMessage = `${result.turn.feedback}\n\n${this.diagnosticMessage(nextObjective, nextQuestion)}`;
           messageObjectiveId = nextObjective.id;
           questionIntent = "DIAGNOSTIC";
-          messageQuestionFingerprint = questionFingerprint(nextObjective.id, nextObjective.diagnosticPrompt);
+          messageQuestionFingerprint = questionFingerprint(nextObjective.id, nextQuestion.prompt);
+          messageQuestionVersionId = nextQuestion.id || undefined;
+          messageQuestionRubricId = nextQuestion.rubric?.id;
         } else {
           phase = "LEARNING";
           const weakest = await this.weakestObjective(studentId, objectives);
@@ -697,31 +789,12 @@ export class TutorService {
         workedExamplesShown: state.workedExamplesShown,
       });
       if (transition === "ASK_TRANSFER") {
-        const [mainQuestions, conceptQuestions] = await Promise.all([
-          db.tutorMessage.findMany({
-            where: { sessionId, learningObjectiveId: objective.id, questionFingerprint: { not: null } },
-            select: { questionFingerprint: true },
-          }),
-          db.conceptAssessment.findMany({
-            where: {
-              learningObjectiveId: objective.id,
-              questionFingerprint: { not: null },
-              message: { session: { parentStudySessionId: sessionId } },
-            },
-            select: { questionFingerprint: true },
-          }),
-        ]);
-        const transfer = selectTransferQuestion({
-          learningObjectiveId: objective.id,
-          objectiveTitle: objective.title,
-          configuredQuestion: objective.transferPrompt,
-          previousFingerprints: [...mainQuestions, ...conceptQuestions]
-            .flatMap((message) => message.questionFingerprint ? [message.questionFingerprint] : []),
-        });
-        const transferQuestion = transfer.question;
-        tutorMessage = `${result.turn.feedback}\n\nDobrze — teraz sprawdźmy transfer do nowej sytuacji.\n\n${transferQuestion}`;
+        const transferQuestion = await this.selectQuestion(sessionId, objective, "TRANSFER", session.testPlanId);
+        tutorMessage = `${result.turn.feedback}\n\nDobrze — teraz sprawdźmy transfer do nowej sytuacji.\n\n${transferQuestion.prompt}`;
         questionIntent = "TRANSFER";
-        messageQuestionFingerprint = transfer.fingerprint;
+        messageQuestionFingerprint = questionFingerprint(objective.id, transferQuestion.prompt);
+        messageQuestionVersionId = transferQuestion.id || undefined;
+        messageQuestionRubricId = transferQuestion.rubric?.id;
         await db.sessionObjectiveState.update({
           where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
           data: { learningStep: "TRANSFER", consecutiveStruggles: 0 },
@@ -805,6 +878,8 @@ export class TutorService {
         learningObjectiveId: messageObjectiveId,
         questionIntent,
         questionFingerprint: messageQuestionFingerprint,
+        questionVersionId: messageQuestionVersionId,
+        questionRubricId: messageQuestionRubricId,
         conceptMentions,
         knowledgeAssetId: visual.assetId,
         showVisual: visual.showVisual,

@@ -71,6 +71,43 @@ enum QuestionIntent {
   UNDERSTANDING_CHECK
 }
 
+enum QuestionPurpose {
+  DIAGNOSTIC
+  PRACTICE
+  TRANSFER
+  REVIEW
+  MOCK_EXAM
+}
+
+enum QuestionFormat {
+  OPEN_RESPONSE
+  SHORT_ANSWER
+  MULTIPLE_CHOICE
+  TABLE_OR_GRAPH
+  EXPERIMENT
+  DIAGRAM
+}
+
+enum RubricSourceType {
+  CKE_EXACT
+  CKE_DERIVED
+  TEACHER_SPECIFIC
+  CURRICULUM_DERIVED
+  INTERNAL_LEARNING
+}
+
+enum RubricScoringMode {
+  LEARNING_EVIDENCE
+  EXAM_POINTS
+}
+
+enum RubricCriterionStatus {
+  MET
+  PARTIALLY_MET
+  NOT_MET
+  CONTRADICTED
+}
+
 enum ConceptFamiliarity {
   UNKNOWN
   NOT_FAMILIAR
@@ -285,6 +322,7 @@ model LearningObjective {
   sideChatMessages     SideChatMessage[]
   learningEvents       LearningEvent[]
   testPlanObjectives   TestPlanObjective[]
+  questionObjectives   QuestionObjective[]
 
   @@unique([topicId, order])
 }
@@ -394,6 +432,7 @@ model TestPlan {
   unit                  Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
   objectives            TestPlanObjective[]
   sessions              StudySession[]
+  questionRubrics       QuestionRubric[]
 
   @@index([studentId, unitId, status, updatedAt])
   @@index([testDate, status])
@@ -450,15 +489,21 @@ model TutorMessage {
   conceptMentions Json @default("[]")
   knowledgeAssetId String?
   showVisual Boolean @default(false)
+  questionVersionId String?
+  questionRubricId String?
   createdAt DateTime @default(now())
   session   StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   learningObjective LearningObjective? @relation(fields: [learningObjectiveId], references: [id])
   knowledgeAsset KnowledgeAsset? @relation(fields: [knowledgeAssetId], references: [id], onDelete: SetNull)
+  questionVersion QuestionItemVersion? @relation(fields: [questionVersionId], references: [id], onDelete: SetNull)
+  questionRubric QuestionRubric? @relation(fields: [questionRubricId], references: [id], onDelete: SetNull)
   returningConceptSessions ConceptSession[] @relation("ConceptSessionReturnMessage")
 
   @@index([sessionId, createdAt])
   @@index([sessionId, learningObjectiveId, questionIntent])
   @@index([knowledgeAssetId])
+  @@index([questionVersionId])
+  @@index([questionRubricId])
 }
 
 model SideChatMessage {
@@ -512,11 +557,112 @@ model Assessment {
   inputTokens        Int?
   outputTokens       Int?
   knowledgeLocators  Json?
+  questionVersionId  String?
+  questionRubricId   String?
+  rubricEarnedPoints Float?
+  rubricMaxPoints    Float?
   createdAt          DateTime @default(now())
   studentAnswer      StudentAnswer @relation(fields: [studentAnswerId], references: [id], onDelete: Cascade)
   objectives         AssessmentObjective[]
   misconceptions     AssessmentMisconception[]
   conceptEvidence    ConceptEvidence[]
+  questionVersion    QuestionItemVersion? @relation(fields: [questionVersionId], references: [id], onDelete: SetNull)
+  questionRubric     QuestionRubric? @relation(fields: [questionRubricId], references: [id], onDelete: SetNull)
+  criterionResults   AssessmentCriterionResult[]
+
+  @@index([questionVersionId])
+  @@index([questionRubricId])
+}
+
+model QuestionItemVersion {
+  id              String              @id @default(cuid())
+  stableKey       String
+  version         Int                 @default(1)
+  prompt          String
+  purpose         QuestionPurpose
+  format          QuestionFormat      @default(OPEN_RESPONSE)
+  evidenceLevel   String
+  difficulty      Int                 @default(1)
+  status          SourceStatus        @default(DRAFT)
+  sourceType      RubricSourceType
+  sourceLocator   String?
+  sourceVersion   String?
+  stimulus        Json?
+  expectedMinutes Int?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  objectives      QuestionObjective[]
+  rubrics         QuestionRubric[]
+  tutorMessages   TutorMessage[]
+  assessments     Assessment[]
+
+  @@unique([stableKey, version])
+  @@index([purpose, status, difficulty])
+}
+
+model QuestionObjective {
+  questionVersionId   String
+  learningObjectiveId String
+  importance          Float               @default(1)
+  questionVersion     QuestionItemVersion @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
+  learningObjective   LearningObjective   @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+
+  @@id([questionVersionId, learningObjectiveId])
+  @@index([learningObjectiveId])
+}
+
+model QuestionRubric {
+  id                String              @id @default(cuid())
+  stableKey         String
+  questionVersionId String
+  version           Int                 @default(1)
+  title             String
+  sourceType        RubricSourceType
+  scoringMode       RubricScoringMode
+  status            SourceStatus        @default(DRAFT)
+  sourceLocator     String?
+  sourceVersion     String?
+  testPlanId        String?
+  maxPoints         Float?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  questionVersion   QuestionItemVersion @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
+  testPlan          TestPlan?           @relation(fields: [testPlanId], references: [id], onDelete: Cascade)
+  criteria          RubricCriterion[]
+  tutorMessages     TutorMessage[]
+  assessments       Assessment[]
+
+  @@unique([stableKey, version])
+  @@index([questionVersionId, status])
+  @@index([testPlanId])
+}
+
+model RubricCriterion {
+  id                String                      @id @default(cuid())
+  questionRubricId  String
+  code              String
+  description       String
+  required          Boolean                     @default(true)
+  points            Float?
+  evidenceLevel     String
+  acceptedVariants  Json                        @default("[]")
+  questionRubric    QuestionRubric              @relation(fields: [questionRubricId], references: [id], onDelete: Cascade)
+  assessmentResults AssessmentCriterionResult[]
+
+  @@unique([questionRubricId, code])
+}
+
+model AssessmentCriterionResult {
+  assessmentId      String
+  rubricCriterionId String
+  status            RubricCriterionStatus
+  evidence          String
+  awardedPoints     Float?
+  assessment        Assessment            @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  rubricCriterion   RubricCriterion       @relation(fields: [rubricCriterionId], references: [id], onDelete: Restrict)
+
+  @@id([assessmentId, rubricCriterionId])
+  @@index([rubricCriterionId])
 }
 
 model AssessmentObjective {

@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { biologyTutorGuardrails } from "./curriculum-guardrails";
+import { syncBaselineQuestionBank } from "./question-bank-seed";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -385,7 +386,7 @@ async function main() {
     });
 
     for (const [objectiveIndex, objective] of topicSeed.objectives.entries()) {
-      await db.learningObjective.upsert({
+      const seededObjective = await db.learningObjective.upsert({
         where: { code: objective.code },
         update: {
           topicId: topic.id,
@@ -421,6 +422,7 @@ async function main() {
           active: true,
         },
       });
+      await syncBaselineQuestionBank(db, seededObjective);
     }
 
     console.log(`${topicSeed.title} (${topicSeed.bookPages}): ${topicSeed.objectives.length} objectives`);

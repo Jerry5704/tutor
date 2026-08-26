@@ -27,6 +27,7 @@ const turn = (overrides: Partial<TutorTurn> = {}): TutorTurn => ({
   rationale: "Uczeń wyjaśnił mechanizm.",
   sourceLocators: [],
   conceptMentions: [],
+  rubricEvaluation: [],
   ...overrides,
 });
 

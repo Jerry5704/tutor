@@ -143,6 +143,36 @@ Dashboard pokazuje osobno gotowość do zatwierdzonego zakresu i mastery całego
 działu. Sesja zachowuje `testPlanId`, więc późniejsza zmiana planu nie zmienia
 historycznego kontekstu już przeprowadzonej nauki.
 
+## Kontrolowany bank pytań i rubryki
+
+`QuestionItemVersion` przechowuje wersjonowane pytanie niezależnie od kodu
+tutora. Pytanie ma cel użycia (`DIAGNOSTIC`, `PRACTICE`, `TRANSFER`, `REVIEW`
+lub `MOCK_EXAM`), format, trudność, oczekiwany poziom dowodu i jawne
+pochodzenie. Relacja `QuestionObjective` pozwala jednemu zadaniu sprawdzać kilka
+LearningObjectives. Tutor wybiera zatwierdzone pytanie deterministycznie i
+najpierw unika wersji już użytych w bieżącej sesji.
+
+Każda wersja może mieć wersjonowane `QuestionRubric` i `RubricCriterion`.
+Źródła są rozróżniane bez mieszania ich znaczenia:
+
+- `CKE_EXACT` oznacza kryteria przepisane z konkretnego, wskazanego oficjalnego
+  zadania i schematu oceniania;
+- `CKE_DERIVED` oznacza autorskie zadanie wzorowane na jawnych wymaganiach CKE,
+  a nie oficjalny klucz;
+- `TEACHER_SPECIFIC` jest nakładką dotyczącą formy lub oczekiwań konkretnego
+  sprawdzianu i nie stanowi źródła faktów biologicznych;
+- `CURRICULUM_DERIVED` oraz `INTERNAL_LEARNING` służą odpowiednio kryteriom
+  wynikającym z celu curriculum i ćwiczeniom dydaktycznym aplikacji.
+
+Początkowy bank migruje dotychczasowe pytania jako kontrolowane wersje bazowe;
+nie udaje rubryk CKE. Oficjalne kryterium CKE można zatwierdzić dopiero razem z
+`sourceLocator` i wersją dokumentu. Responses API zwraca wynik każdego
+przekazanego kryterium w Structured Output. Backend usuwa obce lub powtórzone
+kody, ogranicza ocenę, gdy wymagane kryterium nie zostało spełnione, i zapisuje
+`AssessmentCriterionResult`. `TutorMessage` oraz `Assessment` zachowują ID
+dokładnej wersji pytania i rubryki, więc późniejsza edycja banku nie zmienia
+historycznego uzasadnienia mastery.
+
 ## Pedagogiczna maszyna stanów
 
 1. `DIAGNOSTIC`: samodzielne wyjaśnienie obejmujące cele działu; znany cel jest

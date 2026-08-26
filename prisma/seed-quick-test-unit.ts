@@ -3,6 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { quickTestUnit } from "../src/server/curriculum/quick-test-unit-data";
 import { normalizedConceptAlias } from "../src/server/services/concept-alias-policy";
+import { syncBaselineQuestionBank } from "./question-bank-seed";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -38,7 +39,7 @@ async function main() {
 
   const objectives: Array<{ id: string; code: string }> = [];
   for (const objective of quickTestUnit.objectives) {
-    objectives.push(await db.learningObjective.upsert({
+    const seededObjective = await db.learningObjective.upsert({
       where: { code: objective.code },
       update: {
         topicId: topic.id,
@@ -74,7 +75,9 @@ async function main() {
         maturaRequirementId: null,
         active: true,
       },
-    }));
+    });
+    objectives.push(seededObjective);
+    await syncBaselineQuestionBank(db, seededObjective);
   }
 
   await db.$transaction(async (tx) => {

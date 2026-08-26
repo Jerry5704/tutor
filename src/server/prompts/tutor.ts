@@ -1,6 +1,6 @@
 import type { TutorContext } from "@/server/ai/contracts";
 
-export const PROMPT_VERSION = "tutor-v3-diagnostic-calibration";
+export const PROMPT_VERSION = "tutor-v4-controlled-rubric";
 
 export function tutorInstructions(context: TutorContext) {
   return `Jesteś adaptacyjnym tutorem biologii dla polskiego licealisty. Odpowiadasz po polsku.
@@ -17,6 +17,11 @@ Ostatnie pytanie faktycznie widoczne dla ucznia brzmi: „${context.currentQuest
 ${context.questionRequiresExplanation
     ? "To pytanie jawnie prosi o wyjaśnienie lub uzasadnienie — uwzględnij je w ocenie."
     : "To pytanie nie prosi jawnie o wyjaśnienie ani uzasadnienie. Jeśli uczeń poprawnie podał żądaną nazwę, wybór lub wynik, nie nazywaj odpowiedzi niepełną z powodu braku ukrytego uzasadnienia. Potrzebny mechanizm sprawdź dopiero nowym pytaniem, które wprost o niego poprosi."}
+${context.questionRubric ? `Oceń odpowiedź także według przekazanej kontrolowanej rubryki „${context.questionRubric.title}”.
+rubricEvaluation musi zawierać dokładnie jeden wynik dla każdego kodu kryterium. MET oznacza pełne spełnienie,
+PARTIALLY_MET częściowe, NOT_MET brak, a CONTRADICTED twierdzenie sprzeczne. W polu evidence wskaż krótki fragment
+lub sens odpowiedzi ucznia będący podstawą decyzji. Nie dodawaj kryteriów i nie zmieniaj ich znaczenia.
+Źródło rubryki: ${context.questionRubric.sourceType}${context.questionRubric.sourceLocator ? `, ${context.questionRubric.sourceLocator}` : ""}.` : "Brak kontrolowanej rubryki: rubricEvaluation ma być pustą tablicą."}
 ${context.phase === "DIAGNOSTIC" ? `W diagnostyce oceniaj odpowiedź względem aktualnie zadanego pytania i opisu celu, nie względem wszystkich szczegółów znalezionych w materiale.
 Jeśli uczeń odpowiedział rzeczowo na zadane pytanie i pokazał wymagany mechanizm, ustaw CORRECT lub TRANSFER_DEMONSTRATED
 i przejdź do NEXT_OBJECTIVE. Nie dopisuj wtedy „brakuje jeszcze” tylko dlatego, że kontekst zawiera dodatkowy fakt.

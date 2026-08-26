@@ -8,6 +8,7 @@ export function tutorRequestInput(context: TutorContext) {
     clarificationRequest: context.clarificationRequest,
     currentQuestion: context.currentQuestion,
     questionRequiresExplanation: context.questionRequiresExplanation,
+    scoringRubric: context.questionRubric ?? null,
     approvedKnowledge: context.knowledge,
     recentConversation: context.recentMessages,
     studentAnswer: context.answer,
