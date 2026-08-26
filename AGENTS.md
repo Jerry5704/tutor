@@ -7,8 +7,9 @@
 - Prefer AWS-native services.
 - Keep the code simple and production-oriented.
 - Add or update automated tests for behavioral changes and bug fixes when practical.
-- Run the relevant tests after code changes; run the full test suite for core or cross-cutting changes.
-- Do not run paid API evaluations, paid simulations, or tests that write to the database unless the user explicitly authorizes them.
+- Run all deterministic unit and integration tests after code changes; also run typecheck, lint, and build when relevant.
+- Do not run paid API evaluations or paid simulations unless the user explicitly authorizes them.
+- Run database-writing tests only against a dedicated disposable test database, never against the normal development or production database.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
