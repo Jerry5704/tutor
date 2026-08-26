@@ -1,18 +1,25 @@
 import type { MockExamGrading } from "@/server/ai/contracts";
 
 export const MOCK_REMEDIATION_THRESHOLD = 80;
+export const REQUIRED_MOCK_QUESTIONS_PER_OBJECTIVE = 2;
+
+export function mockQuestionsPerObjectiveForAttempt(objectiveCount: number) {
+  return objectiveCount <= 2 ? 2 : 1;
+}
 
 export function selectMockQuestionIds(
   objectiveIds: string[],
   questions: Array<{ id: string; objectiveIds: string[] }>,
   perObjective = 2,
+  variantOffset = 0,
 ) {
   const selected: string[] = [];
   const selectedIds = new Set<string>();
   const missingObjectiveIds = new Set<string>();
   for (let round = 0; round < perObjective; round += 1) {
     for (const objectiveId of objectiveIds) {
-      const candidate = questions.find((question) => !selectedIds.has(question.id) && question.objectiveIds.includes(objectiveId));
+      const candidates = questions.filter((question) => !selectedIds.has(question.id) && question.objectiveIds.includes(objectiveId));
+      const candidate = candidates.length ? candidates[variantOffset % candidates.length] : undefined;
       if (!candidate) {
         missingObjectiveIds.add(objectiveId);
         continue;

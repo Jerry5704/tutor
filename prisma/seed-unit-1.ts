@@ -3,6 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { biologyTutorGuardrails } from "./curriculum-guardrails";
 import { syncBaselineQuestionBank } from "./question-bank-seed";
+import { syncUnit1MockExamBank } from "./unit-1-mock-exam-seed";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -423,6 +424,7 @@ async function main() {
         },
       });
       await syncBaselineQuestionBank(db, seededObjective);
+      await syncUnit1MockExamBank(db, seededObjective);
     }
 
     console.log(`${topicSeed.title} (${topicSeed.bookPages}): ${topicSeed.objectives.length} objectives`);

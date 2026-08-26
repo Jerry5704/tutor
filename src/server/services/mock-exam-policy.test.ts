@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { MockExamGrading } from "@/server/ai/contracts";
-import { examAwareReadiness, scoreMockExam, selectMockQuestionIds } from "@/server/services/mock-exam-policy";
+import { examAwareReadiness, mockQuestionsPerObjectiveForAttempt, scoreMockExam, selectMockQuestionIds } from "@/server/services/mock-exam-policy";
 
 const questions = [{
   id: "q1",
@@ -85,4 +85,18 @@ test("mock question selection reports an objective without complete coverage", (
   const result = selectMockQuestionIds(["o1"], [{ id: "q1", objectiveIds: ["o1"] }]);
   assert.deepEqual(result.selectedIds, ["q1"]);
   assert.deepEqual(result.missingObjectiveIds, ["o1"]);
+});
+
+test("a full-unit attempt stays near school-test length while a quick unit uses both variants", () => {
+  assert.equal(mockQuestionsPerObjectiveForAttempt(2), 2);
+  assert.equal(mockQuestionsPerObjectiveForAttempt(15), 1);
+});
+
+test("later attempts rotate to another available question variant", () => {
+  const questions = [
+    { id: "a1", objectiveIds: ["a"] },
+    { id: "a2", objectiveIds: ["a"] },
+  ];
+  assert.deepEqual(selectMockQuestionIds(["a"], questions, 1, 0).selectedIds, ["a1"]);
+  assert.deepEqual(selectMockQuestionIds(["a"], questions, 1, 1).selectedIds, ["a2"]);
 });

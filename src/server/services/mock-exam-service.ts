@@ -5,7 +5,12 @@ import { AIRateLimitService } from "@/server/services/ai-rate-limit-service";
 import { AIUsageService } from "@/server/services/ai-usage-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
 import { LearningEventService } from "@/server/services/learning-event-service";
-import { scoreMockExam, selectMockQuestionIds } from "@/server/services/mock-exam-policy";
+import {
+  mockQuestionsPerObjectiveForAttempt,
+  REQUIRED_MOCK_QUESTIONS_PER_OBJECTIVE,
+  scoreMockExam,
+  selectMockQuestionIds,
+} from "@/server/services/mock-exam-policy";
 import { StudentModelService } from "@/server/services/student-model-service";
 import { objectivesInTestScope } from "@/server/services/test-plan-policy";
 
@@ -98,6 +103,7 @@ export class MockExamService {
     const selection = selectMockQuestionIds(
       objectives.map((objective) => objective.id),
       usable.map(({ question }) => ({ id: question.id, objectiveIds: question.objectives.map((link) => link.learningObjectiveId) })),
+      REQUIRED_MOCK_QUESTIONS_PER_OBJECTIVE,
     );
     const missing = objectives.filter((objective) => selection.missingObjectiveIds.includes(objective.id));
     return {
@@ -112,12 +118,15 @@ export class MockExamService {
     const existing = await db.mockExamAttempt.findUnique({ where: { activeKey } });
     if (existing) return existing;
     const { plan, objectives, usable } = await this.pool(studentId, unitId);
+    const previousAttemptCount = await db.mockExamAttempt.count({ where: { studentId, unitId, status: "GRADED" } });
     const selection = selectMockQuestionIds(
       objectives.map((objective) => objective.id),
       usable.map(({ question }) => ({
         id: question.id,
         objectiveIds: question.objectives.map((link) => link.learningObjectiveId),
       })),
+      mockQuestionsPerObjectiveForAttempt(objectives.length),
+      previousAttemptCount,
     );
     if (selection.missingObjectiveIds.length) {
       const missing = objectives.filter((objective) => selection.missingObjectiveIds.includes(objective.id));

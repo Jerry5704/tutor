@@ -195,10 +195,16 @@ nauki i transferu oraz 40% najnowszego próbnego sprawdzianu. Obie składowe są
 heurystyką opanowania materiału, nie prognozą szkolnej oceny. Wynik poniżej 80%
 dla celu może uruchomić sesję naprawczą obejmującą wyłącznie wykryte braki.
 
-Pierwszy kompletny bank próbny zawiera cztery kontrolowane zadania dla
-dwucelowego działu „Genetyka klasyczna — szybki dział testowy”. Kolejne działy
+Bank próbny obejmuje dwucelowy dział testowy oraz pełny dział „Genetyka
+molekularna”. Dla każdego celu są dwa unikalne zadania oparte na kontrolowanych
+fragmentach podręcznika, z lokalizatorem stron i jawną rubryką punktową. Test
+kompletności pilnuje liczby zadań, unikalności, źródeł i kryteriów. Inne działy
 nie pokazują przycisku sprawdzianu, dopóki każdy cel zatwierdzonego zakresu nie
 ma co najmniej dwóch zatwierdzonych zadań `MOCK_EXAM` z punktową rubryką.
+Bank zachowuje dwa warianty, ale podejście obejmujące więcej niż dwa cele wybiera
+po jednym zadaniu na cel. Dla całego działu daje to 15 zadań i około 45 minut;
+krótki dwucelowy dział nadal wykorzystuje oba warianty każdego celu. Kolejne
+podejście zaczyna od innego wariantu, aby nie powtarzać zawsze tego samego testu.
 
 ## Pedagogiczna maszyna stanów
 
