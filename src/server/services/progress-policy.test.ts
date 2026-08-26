@@ -9,6 +9,8 @@ import {
   diagnosticMasteryDelta,
   explicitlyRequestsHelp,
   masteryDelta,
+  learningStepAfterDiagnostic,
+  learningPlanAfterDiagnostic,
   nextScaffoldLevel,
   requestsBulkDiagnosticSkip,
   asksForClarification,
@@ -69,6 +71,23 @@ describe("progress policy", () => {
     assert.equal(diagnosticMasteryDelta(0, turn({ assessment: "PARTIALLY_CORRECT", evidenceLevel: "MECHANISM" }), false), 0.4);
     assert.equal(diagnosticMasteryDelta(0, turn({ assessment: "CORRECT", evidenceLevel: "MECHANISM" }), false), 0.68);
     assert.equal(diagnosticMasteryDelta(0.4, turn({ studentIntent: "UNCERTAIN", evidenceLevel: "NONE" }), false), 0);
+  });
+
+  it("starts learning after diagnosis at the level already demonstrated", () => {
+    assert.equal(learningStepAfterDiagnostic(0, 0), "EXPLAIN");
+    assert.equal(learningStepAfterDiagnostic(0.4, 1), "PRACTICE");
+    assert.equal(learningStepAfterDiagnostic(0.68, 2), "TRANSFER");
+  });
+
+  it("does not restart from a demonstrated objective when diagnosis is ended early", () => {
+    const plan = learningPlanAfterDiagnostic(["nucleotide", "dna", "rna"], [
+      { learningObjectiveId: "nucleotide", mastery: 0.68, diagnosticAttempts: 2, mastered: false },
+      { learningObjectiveId: "dna", mastery: 0.68, diagnosticAttempts: 1, mastered: false },
+      { learningObjectiveId: "rna", mastery: 0, diagnosticAttempts: 0, mastered: false },
+    ]);
+    assert.equal(plan.nextObjectiveId, "rna");
+    assert.equal(plan.objectives.find((item) => item.learningObjectiveId === "nucleotide")?.learningStep, "TRANSFER");
+    assert.equal(plan.objectives.find((item) => item.learningObjectiveId === "rna")?.learningStep, "EXPLAIN");
   });
 
   it("rewards mechanism and transfer more than recall", () => {

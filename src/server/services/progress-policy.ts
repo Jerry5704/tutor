@@ -2,6 +2,32 @@ import type { TutorTurn } from "@/server/ai/contracts";
 
 export const PRE_TRANSFER_MASTERY_CEILING = 0.74;
 
+export function learningStepAfterDiagnostic(mastery: number, diagnosticAttempts: number) {
+  if (diagnosticAttempts <= 0 || mastery < 0.3) return "EXPLAIN" as const;
+  if (mastery < 0.6) return "PRACTICE" as const;
+  return "TRANSFER" as const;
+}
+
+export function learningPlanAfterDiagnostic(
+  objectiveIds: string[],
+  evidence: Array<{ learningObjectiveId: string; mastery: number; diagnosticAttempts: number; mastered: boolean }>,
+) {
+  const byObjective = new Map(evidence.map((item) => [item.learningObjectiveId, item]));
+  const objectives = objectiveIds.map((learningObjectiveId) => {
+    const item = byObjective.get(learningObjectiveId);
+    return {
+      learningObjectiveId,
+      mastery: item?.mastery ?? 0,
+      mastered: item?.mastered ?? false,
+      learningStep: learningStepAfterDiagnostic(item?.mastery ?? 0, item?.diagnosticAttempts ?? 0),
+    };
+  });
+  const nextObjectiveId = objectives
+    .filter((objective) => !objective.mastered)
+    .toSorted((left, right) => left.mastery - right.mastery)[0]?.learningObjectiveId;
+  return { objectives, nextObjectiveId };
+}
+
 export function capDeltaBeforeTransfer(currentMastery: number, proposedDelta: number) {
   if (proposedDelta <= 0) return proposedDelta;
   const capped = Math.min(proposedDelta, Math.max(0, PRE_TRANSFER_MASTERY_CEILING - currentMastery));

@@ -30,6 +30,8 @@ import {
   demonstratesUnderstanding,
   explicitlyRequestsHelp,
   masteryDelta,
+  learningStepAfterDiagnostic,
+  learningPlanAfterDiagnostic,
   nextScaffoldLevel,
   requestsBulkDiagnosticSkip,
   asksForClarification,
@@ -149,12 +151,50 @@ export class TutorService {
     const firstObjective = objectives[0];
     if (!firstObjective) throw new Error("Unit has no learning objectives");
     await this.ensureObjectiveStates(session.id, objectives.map((item) => item.id), firstObjective.id);
+    const [states, masteries] = await Promise.all([
+      db.sessionObjectiveState.findMany({ where: { sessionId } }),
+      db.studentMastery.findMany({
+        where: { studentId, learningObjectiveId: { in: objectives.map((objective) => objective.id) } },
+        select: { learningObjectiveId: true, mastery: true },
+      }),
+    ]);
+    const stateByObjective = new Map(states.map((state) => [state.learningObjectiveId, state]));
+    const masteryByObjective = new Map(masteries.map((mastery) => [mastery.learningObjectiveId, mastery.mastery]));
+    const learningPlan = learningPlanAfterDiagnostic(
+      objectives.map((objective) => objective.id),
+      objectives.map((objective) => ({
+        learningObjectiveId: objective.id,
+        mastery: masteryByObjective.get(objective.id) ?? 0,
+        diagnosticAttempts: stateByObjective.get(objective.id)?.diagnosticAttempts ?? 0,
+        mastered: stateByObjective.get(objective.id)?.status === "MASTERED",
+      })),
+    );
+    const nextObjective = objectives.find((objective) => objective.id === learningPlan.nextObjectiveId);
+    if (!nextObjective) throw new Error("All objectives are already mastered");
+    const nextState = stateByObjective.get(nextObjective.id);
+    const nextStep = learningStepAfterDiagnostic(masteryByObjective.get(nextObjective.id) ?? 0, nextState?.diagnosticAttempts ?? 0);
+    const selectedQuestion = nextStep === "EXPLAIN"
+      ? undefined
+      : await this.selectQuestion(sessionId, nextObjective, nextStep === "TRANSFER" ? "TRANSFER" : "PRACTICE", session.testPlanId);
+    const summary = await this.planSummary(studentId, objectives);
+    const transitionContent = nextStep === "EXPLAIN"
+      ? `${summary}\n\nZaczynamy od pierwszego niepotwierdzonego celu.\n\n${guidedLesson(nextObjective)}`
+      : `${summary}\n\nTwoje odpowiedzi diagnostyczne już potwierdziły podstawy tego zagadnienia, więc nie będziemy zadawać tego samego pytania ponownie. ${nextStep === "TRANSFER" ? "Sprawdzimy je od razu w nowej sytuacji." : "Sprawdzimy teraz brakujący element."}\n\n${selectedQuestion?.prompt}`;
 
     await db.$transaction(async (tx) => {
-      await tx.sessionObjectiveState.updateMany({
-        where: { sessionId },
-        data: { status: "LEARNING", learningStep: "EXPLAIN", consecutiveStruggles: 0 },
-      });
+      for (const objective of objectives) {
+        const state = stateByObjective.get(objective.id);
+        if (state?.status === "MASTERED") continue;
+        const planned = learningPlan.objectives.find((item) => item.learningObjectiveId === objective.id);
+        await tx.sessionObjectiveState.update({
+          where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: objective.id } },
+          data: {
+            status: "LEARNING",
+            learningStep: planned?.learningStep ?? "EXPLAIN",
+            consecutiveStruggles: 0,
+          },
+        });
+      }
       if (studentMessage?.trim()) {
         await tx.tutorMessage.create({ data: { sessionId, role: "STUDENT", content: studentMessage.trim() } });
       }
@@ -162,18 +202,24 @@ export class TutorService {
         data: {
           sessionId,
           role: "TUTOR",
-          content: `W porządku — kończę diagnostykę bez dalszego odpytywania. Nie obniża to wyniku; po prostu wszystkie niepotwierdzone cele trafiają do planu nauki.\n\nZaczynamy od początku książki.\n\n${guidedLesson(firstObjective)}`,
-          learningObjectiveId: firstObjective.id,
-          showVisual: true,
+          content: `W porządku — kończę diagnostykę bez dalszego odpytywania. Nie obniża to wyniku; zachowuję wszystkie dotychczasowe odpowiedzi.\n\n${transitionContent}`,
+          learningObjectiveId: nextObjective.id,
+          questionIntent: nextStep === "EXPLAIN" ? undefined : nextStep === "TRANSFER" ? "TRANSFER" : "PRACTICE",
+          questionFingerprint: selectedQuestion ? questionFingerprint(nextObjective.id, selectedQuestion.prompt) : undefined,
+          questionVersionId: selectedQuestion?.id || undefined,
+          questionRubricId: selectedQuestion?.rubric?.id,
+          showVisual: nextStep === "EXPLAIN",
         },
       });
-      await tx.sessionObjectiveState.update({
-        where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: firstObjective.id } },
-        data: { workedExamplesShown: { increment: 1 } },
-      });
+      if (nextStep === "EXPLAIN") {
+        await tx.sessionObjectiveState.update({
+          where: { sessionId_learningObjectiveId: { sessionId, learningObjectiveId: nextObjective.id } },
+          data: { workedExamplesShown: { increment: 1 } },
+        });
+      }
       await tx.studySession.update({
         where: { id: sessionId },
-        data: { phase: "LEARNING", currentObjectiveId: firstObjective.id, scaffoldLevel: 0, objectiveAttempts: 0 },
+        data: { phase: "LEARNING", currentObjectiveId: nextObjective.id, scaffoldLevel: 0, objectiveAttempts: 0, awaitingUnderstandingCheck: false },
       });
     });
   }
