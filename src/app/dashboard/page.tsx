@@ -22,7 +22,9 @@ export default async function Dashboard() {
     return {
       unit,
       plan,
-      testReadiness: await model.readiness(student.id, testObjectives),
+      testReadiness: plan
+        ? await model.testReadiness(student.id, plan.id, testObjectives)
+        : await model.readiness(student.id, testObjectives),
       unitReadiness: await model.readiness(student.id, allObjectives),
       testObjectiveCount: testObjectives.length,
     };

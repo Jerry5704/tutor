@@ -92,6 +92,42 @@ export interface AIProvider extends ExplanationProvider, ConceptAIProvider, Side
   interpretTestScope(context: TestScopeContext): Promise<ConceptAIResult<TestScopeInterpretation>>;
 }
 
+export const mockExamGradingSchema = z.object({
+  answers: z.array(z.object({
+    questionId: z.string().min(1),
+    assessment: z.enum(["INCORRECT", "PARTIALLY_CORRECT", "CORRECT", "TRANSFER_DEMONSTRATED"]),
+    feedback: z.string().min(1).max(900),
+    sourceLocators: z.array(z.string()),
+    criteria: z.array(z.object({
+      criterionCode: z.string().min(1).max(120),
+      status: z.enum(["MET", "PARTIALLY_MET", "NOT_MET", "CONTRADICTED"]),
+      evidence: z.string().max(600),
+    })).max(30),
+  })).min(1).max(20),
+  overallSummary: z.string().min(1).max(1800),
+});
+
+export type MockExamGrading = z.infer<typeof mockExamGradingSchema>;
+
+export interface MockExamGradingContext {
+  questions: Array<{
+    id: string;
+    prompt: string;
+    answer: string;
+    rubric: {
+      sourceType: "CKE_EXACT" | "CKE_DERIVED" | "TEACHER_SPECIFIC" | "CURRICULUM_DERIVED" | "INTERNAL_LEARNING";
+      sourceLocator: string | null;
+      criteria: Array<{ code: string; description: string; required: boolean; points: number }>;
+    };
+    allowedSourceLocators: string[];
+  }>;
+  knowledge: KnowledgeExcerpt[];
+}
+
+export interface MockExamAIProvider {
+  gradeMockExam(context: MockExamGradingContext): Promise<ConceptAIResult<MockExamGrading>>;
+}
+
 export const testScopeInterpretationSchema = z.object({
   summary: z.string().min(1).max(1200),
   expectedTaskTypes: z.array(z.string().min(1).max(120)).max(8),

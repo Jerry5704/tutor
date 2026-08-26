@@ -6,6 +6,7 @@ import { AssessmentService } from "@/server/services/assessment-service";
 import { AIUsageService } from "@/server/services/ai-usage-service";
 import { LearningEventService } from "@/server/services/learning-event-service";
 import { QuestionBankService, type SelectedQuestion } from "@/server/services/question-bank-service";
+import { MOCK_REMEDIATION_THRESHOLD } from "@/server/services/mock-exam-policy";
 import { objectivesInTestScope } from "@/server/services/test-plan-policy";
 import { CurriculumService } from "@/server/services/curriculum-service";
 import { KnowledgeService } from "@/server/services/knowledge-service";
@@ -229,6 +230,98 @@ export class TutorService {
       developing.length ? `Masz częściowe podstawy:\n${developing.map((item) => `• ${item.title}`).join("\n")}` : "",
       gaps.length ? `Musimy popracować nad:\n${gaps.map((item, index) => `${index + 1}. ${item.title}`).join("\n")}` : "Nie wykryłem istotnych braków w tym zakresie.",
     ].filter(Boolean).join("\n\n");
+  }
+
+  async startMockRemediation(studentId: string, attemptId: string) {
+    const attempt = await db.mockExamAttempt.findFirstOrThrow({
+      where: { id: attemptId, studentId, status: "GRADED" },
+      include: { objectiveResults: true, testPlan: { include: { objectives: true } } },
+    });
+    const unit = await this.curriculum.getUnitForStudent(attempt.unitId, studentId);
+    const objectives = this.objectives(unit, attempt.testPlan);
+    const examResult = new Map(attempt.objectiveResults.map((result) => [result.learningObjectiveId, result.percentage]));
+    const gaps = objectives.filter((objective) => (examResult.get(objective.id) ?? 0) < MOCK_REMEDIATION_THRESHOLD);
+    const firstGap = gaps[0];
+    if (!firstGap) throw new Error("Ten próbny sprawdzian nie wykazał braków wymagających osobnej sesji.");
+    const existing = await db.studySession.findFirst({
+      where: { studentId, unitId: attempt.unitId, endedAt: null },
+      orderBy: { updatedAt: "desc" },
+    });
+    const stateData = objectives.map((objective) => ({
+      learningObjectiveId: objective.id,
+      status: (examResult.get(objective.id) ?? 0) >= MOCK_REMEDIATION_THRESHOLD
+        ? "MASTERED" as const
+        : objective.id === firstGap.id ? "LEARNING" as const : "NOT_STARTED" as const,
+      learningStep: objective.id === firstGap.id ? "EXPLAIN" as const : "PRACTICE" as const,
+    }));
+    const remediationMessage = `Próbny sprawdzian wskazał konkretną lukę: „${firstGap.title}”. W tej sesji skupimy się na brakach z podejścia, bez ponownego przerabiania poprawnie zaliczonych celów.\n\n${guidedLesson(firstGap)}`;
+    const session = await db.$transaction(async (tx) => {
+      if (existing) {
+        if (attempt.testPlan.originalTeacherNote) {
+          await tx.teacherScopeNote.upsert({
+            where: { sessionId: existing.id },
+            update: { content: attempt.testPlan.originalTeacherNote },
+            create: { sessionId: existing.id, content: attempt.testPlan.originalTeacherNote },
+          });
+        } else {
+          await tx.teacherScopeNote.deleteMany({ where: { sessionId: existing.id } });
+        }
+        await tx.sessionObjectiveState.deleteMany({
+          where: {
+            sessionId: existing.id,
+            learningObjectiveId: { notIn: objectives.map((objective) => objective.id) },
+          },
+        });
+        for (const state of stateData) {
+          await tx.sessionObjectiveState.upsert({
+            where: { sessionId_learningObjectiveId: { sessionId: existing.id, learningObjectiveId: state.learningObjectiveId } },
+            update: { status: state.status, learningStep: state.learningStep, consecutiveStruggles: 0 },
+            create: { sessionId: existing.id, ...state },
+          });
+        }
+        await tx.tutorMessage.create({
+          data: { sessionId: existing.id, role: "TUTOR", content: remediationMessage, learningObjectiveId: firstGap.id, showVisual: true },
+        });
+        return tx.studySession.update({
+          where: { id: existing.id },
+          data: {
+            phase: "LEARNING",
+            testPlanId: attempt.testPlanId,
+            currentObjectiveId: firstGap.id,
+            pausedAt: null,
+            awaitingUnderstandingCheck: false,
+            scaffoldLevel: 0,
+            objectiveAttempts: 0,
+          },
+        });
+      }
+      return tx.studySession.create({
+        data: {
+          studentId,
+          unitId: attempt.unitId,
+          testPlanId: attempt.testPlanId,
+          phase: "LEARNING",
+          currentObjectiveId: firstGap.id,
+          promptVersion: PROMPT_VERSION,
+          teacherScopeNote: attempt.testPlan.originalTeacherNote
+            ? { create: { content: attempt.testPlan.originalTeacherNote } }
+            : undefined,
+          objectiveStates: { create: stateData },
+          messages: {
+            create: { role: "TUTOR", content: remediationMessage, learningObjectiveId: firstGap.id, showVisual: true },
+          },
+        },
+      });
+    });
+    await this.learningEvents.record({
+      studentId,
+      studySessionId: session.id,
+      learningObjectiveId: firstGap.id,
+      eventType: existing ? "SESSION_RESUMED" : "SESSION_STARTED",
+      metadata: { source: "MOCK_EXAM_REMEDIATION", attemptId, gapCount: gaps.length },
+      deduplicationKey: `mock-remediation:${attemptId}`,
+    });
+    return session;
   }
 
   private async recordDiagnosticGap(params: {

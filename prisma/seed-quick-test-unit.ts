@@ -4,6 +4,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { quickTestUnit } from "../src/server/curriculum/quick-test-unit-data";
 import { normalizedConceptAlias } from "../src/server/services/concept-alias-policy";
 import { syncBaselineQuestionBank } from "./question-bank-seed";
+import { syncQuickMockExamBank } from "./quick-mock-exam-seed";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
@@ -79,6 +80,7 @@ async function main() {
     objectives.push(seededObjective);
     await syncBaselineQuestionBank(db, seededObjective);
   }
+  await syncQuickMockExamBank(db, objectives);
 
   await db.$transaction(async (tx) => {
     const existing = await tx.knowledgeSource.findFirst({ where: { provenance: quickTestUnit.source.provenance } });

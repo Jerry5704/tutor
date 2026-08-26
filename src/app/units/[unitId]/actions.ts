@@ -6,6 +6,7 @@ import { OpenAIProvider } from "@/server/ai/openai-provider";
 import { requireStudent } from "@/server/auth/session";
 import { TestPlanService } from "@/server/services/test-plan-service";
 import { TutorService } from "@/server/services/tutor-service";
+import { MockExamService } from "@/server/services/mock-exam-service";
 
 const draftSchema = z.object({
   testDate: z.iso.date(),
@@ -56,4 +57,10 @@ export async function startUnit(unitId: string) {
   const student = await requireStudent();
   const session = await new TutorService(new OpenAIProvider()).start(student.id, unitId);
   redirect(`/study/${session.id}`);
+}
+
+export async function startMockExam(unitId: string) {
+  const student = await requireStudent();
+  const attempt = await new MockExamService(new OpenAIProvider()).start(student.id, unitId);
+  redirect(`/mock-exams/${attempt.id}`);
 }

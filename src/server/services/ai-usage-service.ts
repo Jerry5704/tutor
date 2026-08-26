@@ -18,6 +18,7 @@ type CaptureContext = {
   studentId: string;
   studySessionId?: string;
   conceptSessionId?: string;
+  mockExamAttemptId?: string;
   feature: AIUsageFeature;
   promptVersion: string;
 };

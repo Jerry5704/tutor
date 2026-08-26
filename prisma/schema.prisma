@@ -154,6 +154,7 @@ enum AIUsageFeature {
   SIDE_CHAT
   QUICK_EXPLANATION
   TEST_SCOPE_PARSING
+  MOCK_EXAM_GRADING
 }
 
 enum AIUsageStatus {
@@ -185,6 +186,15 @@ enum LearningEventType {
   TUTOR_FEEDBACK_SUBMITTED
   TEST_PLAN_DRAFTED
   TEST_PLAN_CONFIRMED
+  MOCK_EXAM_STARTED
+  MOCK_EXAM_ANSWER_SAVED
+  MOCK_EXAM_GRADED
+}
+
+enum MockExamStatus {
+  IN_PROGRESS
+  GRADING
+  GRADED
 }
 
 enum TestPlanStatus {
@@ -273,6 +283,7 @@ model Unit {
   sessions    StudySession[]
   sourceLinks KnowledgeSourceUnit[]
   testPlans   TestPlan[]
+  mockExamAttempts MockExamAttempt[]
 
   @@unique([courseId, slug])
   @@unique([courseId, order])
@@ -323,6 +334,8 @@ model LearningObjective {
   learningEvents       LearningEvent[]
   testPlanObjectives   TestPlanObjective[]
   questionObjectives   QuestionObjective[]
+  mockExamQuestionObjectives MockExamQuestionObjective[]
+  mockExamObjectiveResults MockExamObjectiveResult[]
 
   @@unique([topicId, order])
 }
@@ -355,6 +368,7 @@ model StudentProfile {
   tutorFeedback TutorResponseFeedback[]
   learningEvents LearningEvent[]
   testPlans TestPlan[]
+  mockExamAttempts MockExamAttempt[]
 }
 
 model Enrollment {
@@ -433,6 +447,7 @@ model TestPlan {
   objectives            TestPlanObjective[]
   sessions              StudySession[]
   questionRubrics       QuestionRubric[]
+  mockExamAttempts      MockExamAttempt[]
 
   @@index([studentId, unitId, status, updatedAt])
   @@index([testDate, status])
@@ -595,6 +610,7 @@ model QuestionItemVersion {
   rubrics         QuestionRubric[]
   tutorMessages   TutorMessage[]
   assessments     Assessment[]
+  mockExamQuestions MockExamQuestion[]
 
   @@unique([stableKey, version])
   @@index([purpose, status, difficulty])
@@ -631,6 +647,7 @@ model QuestionRubric {
   criteria          RubricCriterion[]
   tutorMessages     TutorMessage[]
   assessments       Assessment[]
+  mockExamQuestions MockExamQuestion[]
 
   @@unique([stableKey, version])
   @@index([questionVersionId, status])
@@ -648,6 +665,7 @@ model RubricCriterion {
   acceptedVariants  Json                        @default("[]")
   questionRubric    QuestionRubric              @relation(fields: [questionRubricId], references: [id], onDelete: Cascade)
   assessmentResults AssessmentCriterionResult[]
+  mockExamResults   MockExamCriterionResult[]
 
   @@unique([questionRubricId, code])
 }
@@ -663,6 +681,110 @@ model AssessmentCriterionResult {
 
   @@id([assessmentId, rubricCriterionId])
   @@index([rubricCriterionId])
+}
+
+model MockExamAttempt {
+  id                 String @id @default(cuid())
+  activeKey          String? @unique
+  studentId          String
+  unitId             String
+  testPlanId         String
+  status             MockExamStatus @default(IN_PROGRESS)
+  readinessBefore    Int
+  durationMinutes    Int
+  expiresAt          DateTime
+  score              Float?
+  maxScore           Float?
+  percentage         Int?
+  overallSummary     String?
+  providerResponseId String? @unique
+  model              String?
+  promptVersion      String
+  latencyMs          Int?
+  inputTokens        Int?
+  outputTokens       Int?
+  startedAt          DateTime @default(now())
+  gradedAt           DateTime?
+  student            StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  unit               Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  testPlan           TestPlan @relation(fields: [testPlanId], references: [id], onDelete: Restrict)
+  questions          MockExamQuestion[]
+  objectiveResults   MockExamObjectiveResult[]
+  aiUsageEvents      AiUsageEvent[]
+
+  @@index([studentId, unitId, status, startedAt])
+  @@index([testPlanId, status])
+}
+
+model MockExamQuestion {
+  id                String @id @default(cuid())
+  attemptId         String
+  questionVersionId String
+  questionRubricId  String
+  order             Int
+  promptSnapshot    String
+  rubricSnapshot    Json
+  maxPoints         Float
+  attempt           MockExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionVersion   QuestionItemVersion @relation(fields: [questionVersionId], references: [id], onDelete: Restrict)
+  questionRubric    QuestionRubric @relation(fields: [questionRubricId], references: [id], onDelete: Restrict)
+  objectives        MockExamQuestionObjective[]
+  answer            MockExamAnswer?
+
+  @@unique([attemptId, order])
+  @@index([questionVersionId])
+  @@index([questionRubricId])
+}
+
+model MockExamQuestionObjective {
+  mockExamQuestionId String
+  learningObjectiveId String
+  importance Float @default(1)
+  mockExamQuestion MockExamQuestion @relation(fields: [mockExamQuestionId], references: [id], onDelete: Cascade)
+  learningObjective LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Restrict)
+
+  @@id([mockExamQuestionId, learningObjectiveId])
+  @@index([learningObjectiveId])
+}
+
+model MockExamAnswer {
+  id            String @id @default(cuid())
+  questionId    String @unique
+  content       String
+  rating        AssessmentRating?
+  feedback      String?
+  sourceLocators Json?
+  earnedPoints  Float?
+  submittedAt   DateTime @default(now())
+  gradedAt      DateTime?
+  question      MockExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  criterionResults MockExamCriterionResult[]
+}
+
+model MockExamCriterionResult {
+  answerId          String
+  rubricCriterionId String
+  status            RubricCriterionStatus
+  evidence          String
+  awardedPoints     Float
+  answer             MockExamAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  rubricCriterion    RubricCriterion @relation(fields: [rubricCriterionId], references: [id], onDelete: Restrict)
+
+  @@id([answerId, rubricCriterionId])
+  @@index([rubricCriterionId])
+}
+
+model MockExamObjectiveResult {
+  attemptId          String
+  learningObjectiveId String
+  earnedPoints       Float
+  maxPoints          Float
+  percentage         Int
+  attempt            MockExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  learningObjective  LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Restrict)
+
+  @@id([attemptId, learningObjectiveId])
+  @@index([learningObjectiveId, percentage])
 }
 
 model AssessmentObjective {
@@ -911,6 +1033,7 @@ model AiUsageEvent {
   studentId                  String
   studySessionId             String?
   conceptSessionId           String?
+  mockExamAttemptId          String?
   feature                    AIUsageFeature
   status                     AIUsageStatus
   provider                   String @default("openai")
@@ -932,9 +1055,11 @@ model AiUsageEvent {
   student                    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studySession               StudySession? @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
   conceptSession             ConceptSession? @relation(fields: [conceptSessionId], references: [id], onDelete: SetNull)
+  mockExamAttempt            MockExamAttempt? @relation(fields: [mockExamAttemptId], references: [id], onDelete: SetNull)
 
   @@index([studentId, createdAt])
   @@index([studySessionId, feature, createdAt])
+  @@index([mockExamAttemptId, feature, createdAt])
   @@index([feature, status, createdAt])
   @@map("AIUsageEvent")
 }

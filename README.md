@@ -173,6 +173,33 @@ kody, ogranicza ocenę, gdy wymagane kryterium nie zostało spełnione, i zapisu
 dokładnej wersji pytania i rubryki, więc późniejsza edycja banku nie zmienia
 historycznego uzasadnienia mastery.
 
+## Próbny sprawdzian
+
+Próbny sprawdzian jest osobnym procesem od rozmowy z tutorem. `MockExamAttempt`
+zamraża zatwierdzony `TestPlan`, wersje pytań, rubryki, kryteria i readiness z
+chwili startu. Uczeń widzi jedno pytanie naraz oraz limit czasu; podczas
+rozwiązywania nie ma podpowiedzi, feedbacku, czatu pobocznego ani dostępu do
+wcześniejszych wyjaśnień. Może oddać podejście wcześniej, a brak odpowiedzi
+otrzymuje zero punktów.
+
+Wszystkie odpowiedzi z jednego podejścia są oceniane jednym wywołaniem
+Responses API dopiero po oddaniu. Model oznacza wyłącznie przekazane kryteria,
+natomiast backend odrzuca obce identyfikatory i sam wylicza punkty. Brakujący
+wynik kryterium jest traktowany jako niespełniony, więc błąd modelu nie może
+zawyżyć wyniku. `MockExamCriterionResult` zachowuje dowód dla każdego punktu, a
+`MockExamObjectiveResult` agreguje wynik według LearningObjective.
+
+Readiness do konkretnego sprawdzianu pozostaje mastery z nauki do chwili
+pierwszego ocenionego podejścia. Później jest liczony per cel jako 60% dowodów z
+nauki i transferu oraz 40% najnowszego próbnego sprawdzianu. Obie składowe są
+heurystyką opanowania materiału, nie prognozą szkolnej oceny. Wynik poniżej 80%
+dla celu może uruchomić sesję naprawczą obejmującą wyłącznie wykryte braki.
+
+Pierwszy kompletny bank próbny zawiera cztery kontrolowane zadania dla
+dwucelowego działu „Genetyka klasyczna — szybki dział testowy”. Kolejne działy
+nie pokazują przycisku sprawdzianu, dopóki każdy cel zatwierdzonego zakresu nie
+ma co najmniej dwóch zatwierdzonych zadań `MOCK_EXAM` z punktową rubryką.
+
 ## Pedagogiczna maszyna stanów
 
 1. `DIAGNOSTIC`: samodzielne wyjaśnienie obejmujące cele działu; znany cel jest

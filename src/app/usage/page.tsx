@@ -9,6 +9,7 @@ const featureLabels = {
   SIDE_CHAT: "Pytanie poboczne",
   QUICK_EXPLANATION: "Szybkie wyjaśnienie zdania",
   TEST_SCOPE_PARSING: "Interpretacja zakresu sprawdzianu",
+  MOCK_EXAM_GRADING: "Ocena próbnego sprawdzianu",
 } as const;
 
 function money(value: number) {
